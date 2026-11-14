@@ -1,0 +1,42 @@
+{
+  "name": "maak",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "vite build",
+    "typecheck": "tsc -p tsconfig.json && tsc -p web/tsconfig.json",
+    "test": "npm run typecheck && npm run build && playwright test",
+    "format": "prettier --write ."
+  },
+  "dependencies": {
+    "@codemirror/autocomplete": "^6.20.4",
+    "@codemirror/commands": "^6.8.0",
+    "@codemirror/lang-css": "^6.3.1",
+    "@codemirror/lang-html": "^6.4.9",
+    "@codemirror/lang-javascript": "^6.2.3",
+    "@codemirror/lang-json": "^6.0.1",
+    "@codemirror/language": "^6.13.1",
+    "@codemirror/state": "^6.5.2",
+    "@codemirror/view": "^6.36.4",
+    "@emmetio/codemirror6-plugin": "^0.4.2",
+    "@fontsource-variable/atkinson-hyperlegible-next": "^5.3.0",
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@lezer/highlight": "^1.2.5",
+    "codemirror": "^6.0.2",
+    "fflate": "^0.8.3",
+    "hono": "^4.13.18",
+    "lucide-preact": "^1.72.0",
+    "preact": "^10.26.4"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261113.1",
+    "@playwright/test": "^1.65.0",
+    "@preact/preset-vite": "^2.10.6",
+    "@types/node": "^24.0.0",
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.3",
+    "vite": "^7.0.0",
+    "wrangler": "^4.162.0"
+  }
+}

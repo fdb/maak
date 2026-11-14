@@ -1,0 +1,55 @@
+{
+  // The top level is the local development setup. Production values live in env.production.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "maak-dev",
+  "main": "src/worker/index.ts",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "run_worker_first": true,
+    "not_found_handling": "single-page-application"
+  },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "maak", "database_id": "local", "migrations_dir": "migrations" }
+  ],
+  "r2_buckets": [{ "binding": "FILES", "bucket_name": "maak-files" }],
+  "triggers": { "crons": ["0 3 * * 1"] },
+  "vars": {
+    "APP_HOST": "localhost:8787",
+    "SITE_SUFFIX": "localhost:8787",
+    "OIDC_ISSUER": "http://localhost:8788",
+    "OIDC_CLIENT_ID": "maak-dev",
+    "ADMIN_EMAILS": "admin@school.test",
+    "CONTACT": "admin@school.test"
+  },
+  "env": {
+    "production": {
+      "name": "maak",
+      "account_id": "5fc69033e96d15e0db981519f3c4b372",
+      "routes": [
+        { "pattern": "maak.io/*", "zone_name": "maak.io" },
+        { "pattern": "*.maak.io/*", "zone_name": "maak.io" }
+      ],
+      "workers_dev": false,
+      "preview_urls": false,
+      "observability": { "enabled": true },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "maak",
+          "database_id": "99c20a0f-55e8-459e-8125-f7987ae75f3d",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "r2_buckets": [{ "binding": "FILES", "bucket_name": "maak-files", "jurisdiction": "eu" }],
+      // OIDC_CLIENT_SECRET, ADMIN_EMAILS and CONTACT are secrets: wrangler secret put <NAME> --env production
+      "vars": {
+        "APP_HOST": "maak.io",
+        "SITE_SUFFIX": "maak.io",
+        "OIDC_ISSUER": "https://accounts.google.com",
+        "OIDC_CLIENT_ID": "423428242384-iqegn2v32tgbofmefjhdgrgur0eb7jll.apps.googleusercontent.com"
+      }
+    }
+  }
+}

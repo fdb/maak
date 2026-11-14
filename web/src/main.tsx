@@ -1,0 +1,76 @@
+import { render } from "preact";
+import { useEffect, useState } from "preact/hooks";
+import { type Me, api } from "./api";
+import { EditorPage } from "./editor";
+import { type Lang, setLang, t } from "./i18n";
+import { initTheme } from "./look";
+import { Admin, CopyPage, Front, Projects, Report, TextPage } from "./pages";
+import "@fontsource-variable/atkinson-hyperlegible-next";
+import "@fontsource-variable/jetbrains-mono";
+import "./style.css";
+import { A } from "./ui";
+
+function pickLang(me: Me): Lang {
+  const own = me.user?.lang ?? localStorage.getItem("maak:lang") ?? navigator.language;
+  return own.toLowerCase().startsWith("nl") ? "nl" : "en";
+}
+
+function App() {
+  const [me, setMe] = useState<Me | null>(null);
+  const [path, setPath] = useState(location.pathname);
+  const [lang, setLangState] = useState<Lang>("nl");
+
+  const loadMe = async () => {
+    const next = await api<Me>("GET", "/api/me");
+    setLang(pickLang(next));
+    setLangState(pickLang(next));
+    setMe(next);
+  };
+  useEffect(() => {
+    void loadMe();
+    const onPop = () => setPath(location.pathname);
+    addEventListener("popstate", onPop);
+    return () => removeEventListener("popstate", onPop);
+  }, []);
+
+  const changeLang = async (next: Lang) => {
+    try {
+      localStorage.setItem("maak:lang", next);
+    } catch {
+      // A private window may refuse storage. The choice then lasts for this visit.
+    }
+    if (me?.user) await api("PATCH", "/api/me", { lang: next }).catch(() => null);
+    setLang(next);
+    setLangState(next);
+    if (me?.user) setMe({ ...me, user: { ...me.user, lang: next } });
+  };
+
+  if (!me) return <p class="center">{t("app.loading")}</p>;
+
+  const [, first, second] = path.split("/");
+  const name = decodeURIComponent(second ?? "");
+  const signIn = <Front me={me} next={path} lang={lang} onLang={changeLang} />;
+
+  let page;
+  if (first === "" || first === "projects") page = me.user ? <Projects key="list" me={me} trash={false} lang={lang} onLang={changeLang} /> : signIn;
+  else if (first === "trash") page = me.user ? <Projects key="trash" me={me} trash={true} lang={lang} onLang={changeLang} /> : signIn;
+  else if (first === "e" && name) page = me.user ? <EditorPage me={me} name={name} readOnly={false} /> : signIn;
+  else if (first === "p" && name) page = <EditorPage me={me} name={name} readOnly={true} />;
+  else if (first === "copy" && name) page = me.user ? <CopyPage name={name} /> : signIn;
+  else if (first === "admin") page = me.user?.admin ? <Admin /> : signIn;
+  else if (first === "report") page = <Report />;
+  else if (first === "about" || first === "terms" || first === "privacy") page = <TextPage which={first} me={me} />;
+  else
+    page = (
+      <main class="page">
+        <p>{t("app.notFound")}</p>
+        <A href="/">{t("app.back")}</A>
+      </main>
+    );
+  // The language is part of the key, so a switch redraws every text.
+  return <div key={lang}>{page}</div>;
+}
+
+initTheme();
+
+render(<App />, document.getElementById("app")!);
