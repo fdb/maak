@@ -15,13 +15,17 @@
   ],
   "r2_buckets": [{ "binding": "FILES", "bucket_name": "maak-files" }],
   "triggers": { "crons": ["0 3 * * 1"] },
+  "version_metadata": { "binding": "CF_VERSION_METADATA" },
+  // Locally the mail is simulated: wrangler dev prints it and sends nothing.
+  "send_email": [{ "name": "MAIL" }],
   "vars": {
     "APP_HOST": "localhost:8787",
     "SITE_SUFFIX": "localhost:8787",
     "OIDC_ISSUER": "http://localhost:8788",
     "OIDC_CLIENT_ID": "maak-dev",
     "ADMIN_EMAILS": "admin@school.test",
-    "CONTACT": "admin@school.test"
+    "CONTACT": "admin@school.test",
+    "MAIL_FROM": "reports@mail.localhost"
   },
   "env": {
     "production": {
@@ -43,8 +47,13 @@
         }
       ],
       "r2_buckets": [{ "binding": "FILES", "bucket_name": "maak-files", "jurisdiction": "eu" }],
-      // OIDC_CLIENT_SECRET, ADMIN_EMAILS and CONTACT are secrets: wrangler secret put <NAME> --env production
+      "version_metadata": { "binding": "CF_VERSION_METADATA" },
+      // mail.maak.io is onboarded to Cloudflare Email Sending. The note goes to ADMIN_EMAILS.
+      "send_email": [{ "name": "MAIL" }],
+      // OIDC_CLIENT_SECRET and ADMIN_EMAILS are secrets: wrangler secret put <NAME> --env production
       "vars": {
+        "CONTACT": "info@maak.io",
+        "MAIL_FROM": "reports@mail.maak.io",
         "APP_HOST": "maak.io",
         "SITE_SUFFIX": "maak.io",
         "OIDC_ISSUER": "https://accounts.google.com",

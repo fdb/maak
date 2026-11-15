@@ -7,6 +7,9 @@
     "build": "vite build",
     "typecheck": "tsc -p tsconfig.json && tsc -p web/tsconfig.json",
     "test": "npm run typecheck && npm run build && playwright test",
+    "deploy": "node scripts/deploy.mjs",
+    "smoke": "node scripts/smoke.mjs https://maak.io",
+    "backup": "node scripts/backup.mjs",
     "format": "prettier --write ."
   },
   "dependencies": {

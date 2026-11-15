@@ -48,8 +48,8 @@ export class EditorStore {
   /** Set while the editor asks what to do with images that are too big. */
   ask: { files: File[]; folder: string; big: BigImage[]; done: (paths: string[]) => void } | null = null;
   preview: PreviewLink | null = null;
-  /** The box whose code should get the keyboard next, after a file was made by name. */
-  wantFocus: number | null = null;
+  /** The file whose code should get the keyboard next, after it was made by name. */
+  wantFocus: string | null = null;
   ready = false;
 
   private listeners = new Set<() => void>();
@@ -336,7 +336,7 @@ export class EditorStore {
     try {
       await saveFile(this.project.id, path, "", 0);
       await this.refresh();
-      this.wantFocus = boxOf(path);
+      this.wantFocus = path;
       await this.open(path);
       return true;
     } catch (error) {
@@ -399,7 +399,7 @@ export class EditorStore {
       const body = open ? open.text : new Blob([(await readBytes(this.project.id, from)).bytes as Uint8Array<ArrayBuffer>]);
       await saveFile(this.project.id, to, body, 0);
       await this.refresh();
-      this.wantFocus = boxOf(to);
+      this.wantFocus = to;
       await this.open(to);
       return true;
     } catch (error) {

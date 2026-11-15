@@ -1416,6 +1416,94 @@ body.menu-open .frame-shield {
   border-bottom: 1px solid var(--line);
 }
 
+/* The list of your own projects is a grid of small pictures. */
+
+.projects.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: 1.8rem 1.4rem;
+  border-top: 0;
+}
+
+/* A card: the picture, then the name with the menu beside it, then the small lines. */
+.cards li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-content: start;
+  align-items: start;
+  gap: 0.1rem 0.4rem;
+  min-height: 0;
+  padding: 0;
+  border-bottom: 0;
+}
+
+.cards li > * {
+  grid-column: 1;
+}
+
+.cards .thumb,
+.cards .name-form {
+  grid-column: 1 / -1;
+}
+
+.cards .project-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cards .menu {
+  grid-column: 2;
+  grid-row: 2 / span 3;
+}
+
+.cards .mark {
+  justify-self: start;
+}
+
+.cards .grow {
+  display: none;
+}
+
+/* White like the preview: the student's page decides its own colours. */
+.thumb {
+  position: relative;
+  flex-basis: 100%;
+  aspect-ratio: 16 / 10;
+  margin-bottom: 0.5rem;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: white;
+  transition: box-shadow 0.15s ease;
+}
+
+.thumb:hover {
+  box-shadow: var(--shadow);
+}
+
+.thumb iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1024px;
+  height: 640px;
+  border: 0;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+
+.cards .dim {
+  font-size: 0.87rem;
+}
+
+@media (max-width: 600px) {
+  .projects.cards {
+    grid-template-columns: 1fr 1fr;
+    gap: 1.4rem 1rem;
+  }
+}
+
 .project-name {
   font-weight: 650;
   font-size: 1.05rem;
@@ -1443,6 +1531,32 @@ a.project-name:hover {
 
 .below {
   margin-top: 1.5rem;
+}
+
+/* An admin's block or suspension, with the reason they gave. */
+.blocked {
+  border-radius: calc(var(--radius) * 0.5);
+  background: var(--warn);
+  padding: 0.3rem 0.5rem;
+  font-size: 0.87rem;
+  white-space: pre-wrap;
+}
+
+.cards .blocked {
+  grid-column: 1 / -1;
+  margin-top: 0.3rem;
+}
+
+.admin-project {
+  margin: 0.6rem 0 1rem;
+}
+
+.admin-project p {
+  margin: 0.2rem 0;
+}
+
+.row-form label.wide {
+  flex: 1 1 20rem;
 }
 
 .panel {
@@ -1550,43 +1664,52 @@ a.project-name:hover {
     position: static;
   }
 
-  /* Two rows: the name on top; below it the actions on the left and the status on the right.
-     Download ZIP is its icon alone. */
+  /* Two rows. On top: maak on the left, the save status and the theme on the right.
+     Below: the address on the left, Share and More on the right. */
   .editor .bar {
-    row-gap: 0.2rem;
+    row-gap: 0.3rem;
   }
 
   .editor .bar > * {
-    order: 2;
+    order: 5;
   }
 
-  .editor .bar > .home,
-  .editor .bar > .address,
-  .editor .bar > .name-form {
+  .editor .bar > .home {
     order: 0;
   }
 
-  .editor .bar > .address {
+  .editor .bar > .status {
+    order: 1;
+    margin-left: auto;
+  }
+
+  .editor .bar > [role="switch"] {
+    order: 2;
+  }
+
+  .editor .bar > .grow {
+    order: 3;
+    flex-basis: 100%;
+    height: 0;
+  }
+
+  .editor .bar > .address,
+  .editor .bar > .name-form {
+    order: 4;
     flex: 0 1 auto;
     min-width: 0;
+  }
+
+  .editor .bar > .address {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .editor .bar > .grow {
-    order: 1;
-    flex-basis: 100%;
-    height: 0;
-  }
-
-  .editor .bar > .status {
-    order: 3;
+  /* Share, or Copy on another person's project, starts the right-hand group. */
+  .editor .bar > .menu:has(> .accent),
+  .editor .bar > .button.accent {
     margin-left: auto;
-  }
-
-  .editor .bar .label {
-    display: none;
   }
 
   .bar .popup {

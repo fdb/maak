@@ -7,6 +7,7 @@
  * Usage:
  *   node scripts/dev.mjs           # development, state kept in .wrangler/state
  *   node scripts/dev.mjs --test    # tests: fresh state in .wrangler/test, no rebuild
+ *   node scripts/dev.mjs --state .wrangler/restore   # serve a restored backup
  */
 
 import { spawn, spawnSync } from "node:child_process";
@@ -17,7 +18,8 @@ import { fileURLToPath } from "node:url";
 process.chdir(resolve(dirname(fileURLToPath(import.meta.url)), ".."));
 
 const test = process.argv.includes("--test");
-const state = test ? ".wrangler/test" : ".wrangler/state";
+const named = process.argv.indexOf("--state");
+const state = named > 0 ? process.argv[named + 1] : test ? ".wrangler/test" : ".wrangler/state";
 if (test) rmSync(state, { recursive: true, force: true });
 
 const bin = (name) => resolve("node_modules/.bin", name);

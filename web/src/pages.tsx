@@ -2,7 +2,7 @@
 
 import { Download, FileCode, FileImage, FolderOpen, Globe, History, Palette } from "lucide-preact";
 import type { ComponentChildren } from "preact";
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { ApiError, type Me, type ProjectInfo, api } from "./api";
 import { type Lang, errorText, getLang, t, when } from "./i18n";
 import { ThemeToggle } from "./look";
@@ -203,7 +203,15 @@ export function Front(props: { me: Me; next: string } & LangProps) {
         <p class="front-sub">{t("front.sub")}</p>
         {refused && (
           <p class="error" role="alert">
-            {t(refused === "invite" ? "front.refused.invite" : refused === "email" ? "front.refused.email" : "front.refused.other")}{" "}
+            {t(
+              refused === "invite"
+                ? "front.refused.invite"
+                : refused === "email"
+                  ? "front.refused.email"
+                  : refused === "suspended"
+                    ? "front.refused.suspended"
+                    : "front.refused.other",
+            )}{" "}
             {t("front.contact", { contact: props.me.contact })}
           </p>
         )}
@@ -234,13 +242,59 @@ export function Front(props: { me: Me; next: string } & LangProps) {
   );
 }
 
+/** The menu behind the email address. Sign out is the last item on every page. */
+function AccountMenu(props: { me: Me } & LangProps) {
+  const user = props.me.user!;
+  return (
+    <Menu
+      label={user.email}
+      title={t("account.menu")}
+      class="link"
+      items={[
+        { label: t("account.language"), run: () => props.onLang(props.lang === "nl" ? "en" : "nl") },
+        { label: t("account.menu"), run: () => go("/account") },
+        ...(user.admin ? [{ label: t("account.admin"), run: () => go("/admin") }] : []),
+        {
+          label: t("account.signOut"),
+          run: async () => {
+            await api("POST", "/auth/logout").catch(() => null);
+            location.href = "/";
+          },
+        },
+      ]}
+    />
+  );
+}
+
+/** The account page: who is signed in, the export of all work, and the way out. */
+export function Account(props: { me: Me } & LangProps) {
+  const [error, setError] = useState<string | null>(null);
+  const user = props.me.user!;
+  return (
+    <Shell right={<AccountMenu {...props} />}>
+      <h1>{t("account.menu")}</h1>
+      <p>{t("account.signedIn", { email: user.email })}</p>
+      <ErrorLine code={error} />
+      <h2>{t("account.downloadAll")}</h2>
+      <p class="dim">{t("account.downloadText")}</p>
+      <p>
+        <button type="button" class="button" onClick={() => void downloadAll().catch((e) => setError(codeOf(e)))}>
+          <Download size={16} />
+          {t("account.downloadAll")}
+        </button>
+      </p>
+      <Leave email={user.email} />
+      <p class="below">
+        <A href="/">{t("app.back")}</A>
+      </p>
+    </Shell>
+  );
+}
+
 export function Projects(props: { me: Me; trash: boolean } & LangProps) {
   const [projects, setProjects] = useState<ProjectInfo[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
-  const [leaving, setLeaving] = useState(false);
-  const user = props.me.user!;
-
   const load = () =>
     api<{ projects: ProjectInfo[] }>("GET", `/api/projects${props.trash ? "?trash=1" : ""}`)
       .then((r) => setProjects(r.projects))
@@ -267,29 +321,10 @@ export function Projects(props: { me: Me; trash: boolean } & LangProps) {
       go(`/e/${project.name}`);
     });
 
-  const account = (
-    <Menu
-      label={user.email}
-      title={t("account.menu")}
-      class="link"
-      items={[
-        { label: t("account.language"), run: () => props.onLang(props.lang === "nl" ? "en" : "nl") },
-        { label: t("account.downloadAll"), run: () => void downloadAll().catch((e) => setError(codeOf(e))) },
-        ...(user.admin ? [{ label: t("account.admin"), run: () => go("/admin") }] : []),
-        {
-          label: t("account.signOut"),
-          run: async () => {
-            await api("POST", "/auth/logout").catch(() => null);
-            location.href = "/";
-          },
-        },
-        { label: t("account.delete"), run: () => setLeaving(true) },
-      ]}
-    />
-  );
+  const account = <AccountMenu me={props.me} lang={props.lang} onLang={props.onLang} />;
 
   return (
-    <Shell right={account}>
+    <Shell right={account} wide={!props.trash}>
       <div class="list-head">
         <h1>{t(props.trash ? "trash.title" : "list.title")}</h1>
         {!props.trash && (
@@ -305,9 +340,10 @@ export function Projects(props: { me: Me; trash: boolean } & LangProps) {
       ) : projects.length === 0 ? (
         <p class="dim">{t(props.trash ? "trash.empty" : "list.empty")}</p>
       ) : (
-        <ul class="projects">
+        <ul class={props.trash ? "projects" : "projects cards"}>
           {projects.map((p) => (
             <li key={p.id}>
+              {!props.trash && <Thumb project={p} suffix={props.me.siteSuffix} />}
               {renaming === p.id ? (
                 <NameForm
                   name={p.name}
@@ -338,6 +374,7 @@ export function Projects(props: { me: Me; trash: boolean } & LangProps) {
                   </A>
                   {p.shared && <span class="mark">{t("list.shared")}</span>}
                   <span class="dim">{t("list.edited", { when: when(p.updated_at) })}</span>
+                  {p.blocked && <span class="blocked">{t("list.blocked", { reason: p.blocked })}</span>}
                   <span class="grow" />
                   <Menu
                     label="…"
@@ -359,8 +396,43 @@ export function Projects(props: { me: Me; trash: boolean } & LangProps) {
         </ul>
       )}
       <p class="below">{props.trash ? <A href="/">{t("app.back")}</A> : <A href="/trash">{t("list.trash")}</A>}</p>
-      {leaving && <Leave email={user.email} onCancel={() => setLeaving(false)} />}
     </Shell>
+  );
+}
+
+const THUMB_WIDTH = 1024;
+
+/**
+ * The project's own page from its private address, drawn small. The frame has an empty sandbox,
+ * so the page runs no script: a page that hangs or plays sound cannot do so from the list.
+ */
+function Thumb(props: { project: ProjectInfo; suffix: string }) {
+  const box = useRef<HTMLAnchorElement>(null);
+  const [scale, setScale] = useState(0);
+  useLayoutEffect(() => {
+    const el = box.current!;
+    const watch = new ResizeObserver(() => setScale(el.clientWidth / THUMB_WIDTH));
+    watch.observe(el);
+    return () => watch.disconnect();
+  }, []);
+  const { name, secret } = props.project;
+  return (
+    <a
+      href={`/e/${name}`}
+      class="thumb"
+      ref={box}
+      tabIndex={-1}
+      aria-hidden="true"
+      onClick={(e) => {
+        if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
+        e.preventDefault();
+        go(`/e/${name}`);
+      }}
+    >
+      {secret && scale > 0 && (
+        <iframe src={`${location.protocol}//${name}--${secret}.${props.suffix}/`} sandbox="" loading="lazy" tabIndex={-1} scrolling="no" style={{ transform: `scale(${scale})` }} />
+      )}
+    </a>
   );
 }
 
@@ -406,7 +478,7 @@ export function NameForm(props: { name: string; suffix: string; onSave: (name: s
   );
 }
 
-function Leave(props: { email: string; onCancel: () => void }) {
+function Leave(props: { email: string }) {
   const [typed, setTyped] = useState("");
   const [error, setError] = useState<string | null>(null);
   return (
@@ -431,9 +503,6 @@ function Leave(props: { email: string; onCancel: () => void }) {
       </label>
       <button type="submit" class="button">
         {t("account.deleteButton")}
-      </button>
-      <button type="button" class="button quiet" onClick={props.onCancel}>
-        {t("name.cancel")}
       </button>
     </form>
   );
@@ -496,17 +565,55 @@ interface AdminState {
   allowed: { pattern: string; note: string }[];
   invites: { code: string; uses_left: number; expires_at: number }[];
   reports: { id: number; project_name: string; reason: string; created_at: number; handled_at: number | null; shared: number | null }[];
+  moderation: { at: number; admin: string; action: "block" | "unblock" | "suspend" | "restore"; target: string; reason: string }[];
 }
 
-export function Admin() {
+interface AdminProject {
+  name: string;
+  secret: string;
+  shared: number;
+  blocked_reason: string | null;
+  deleted_at: number | null;
+  updated_at: number;
+  owner: string;
+  suspended_at: number | null;
+  files: number;
+}
+
+interface Person {
+  id: string;
+  email: string;
+  seen_at: number;
+  suspended_at: number | null;
+  suspended_reason: string;
+  projects: number;
+}
+
+export function Admin(props: { me: Me }) {
   const [state, setState] = useState<AdminState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pattern, setPattern] = useState("");
   const [note, setNote] = useState("");
   const [uses, setUses] = useState(30);
   const [days, setDays] = useState(14);
+  const [lookup, setLookup] = useState("");
+  const [project, setProject] = useState<AdminProject | null>(null);
+  const [blockReason, setBlockReason] = useState("");
+  const [query, setQuery] = useState("");
+  const [people, setPeople] = useState<Person[]>([]);
+  const projectBox = useRef<HTMLHeadingElement>(null);
+
   const load = () => api<AdminState>("GET", "/api/admin/state").then(setState).catch((e) => setError(codeOf(e)));
-  useEffect(() => void load(), []);
+  const findProject = (name: string) =>
+    api<{ project: AdminProject }>("GET", `/api/admin/projects/${encodeURIComponent(name.trim().toLowerCase())}`).then((r) =>
+      setProject(r.project),
+    );
+  const findPeople = (q: string) =>
+    api<{ people: Person[] }>("GET", `/api/admin/people?q=${encodeURIComponent(q)}`).then((r) => setPeople(r.people));
+  useEffect(() => {
+    void load();
+    void findPeople("").catch((e) => setError(codeOf(e)));
+  }, []);
   const act = async (work: () => Promise<unknown>) => {
     setError(null);
     try {
@@ -516,7 +623,17 @@ export function Admin() {
       setError(codeOf(e));
     }
   };
+  const look = (name: string) => {
+    setLookup(name);
+    void act(() => findProject(name)).then(() => projectBox.current?.scrollIntoView({ block: "start" }));
+  };
+  const suspend = (person: Person) => {
+    const reason = prompt(t("admin.suspendReason", { email: person.email }));
+    if (reason?.trim()) void act(() => api("POST", `/api/admin/people/${person.id}`, { suspend: true, reason }).then(() => findPeople(query)));
+  };
+
   if (!state) return <Shell>{error ? <ErrorLine code={error} /> : <p class="dim">{t("app.loading")}</p>}</Shell>;
+  const preview = project && `${location.protocol}//${project.name}--${project.secret}.${props.me.siteSuffix}/`;
   return (
     <Shell>
       <h1>{t("admin.title")}</h1>
@@ -532,18 +649,137 @@ export function Admin() {
             <span class="reason">{r.reason}</span>
             <span class="dim">{when(r.created_at)}</span>
             <span class="grow" />
+            <button type="button" class="button" onClick={() => look(r.project_name)}>
+              {t("admin.look")}
+            </button>
             {r.handled_at ? (
               <span>{t("admin.handled")}</span>
             ) : (
-              <>
-                <button type="button" class="button" onClick={() => act(() => api("POST", `/api/admin/reports/${r.id}`, { unshare: true }))}>
-                  {t("admin.unshare")}
-                </button>
-                <button type="button" class="button quiet" onClick={() => act(() => api("POST", `/api/admin/reports/${r.id}`, {}))}>
-                  {t("admin.done")}
-                </button>
-              </>
+              <button type="button" class="button quiet" onClick={() => act(() => api("POST", `/api/admin/reports/${r.id}`, {}))}>
+                {t("admin.done")}
+              </button>
             )}
+          </li>
+        ))}
+      </ul>
+
+      <h2 ref={projectBox}>{t("admin.project")}</h2>
+      <p class="dim">{t("admin.projectHint")}</p>
+      <form
+        class="row-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void act(() => findProject(lookup));
+        }}
+      >
+        <label>
+          {t("admin.project")}
+          <input value={lookup} onInput={(e) => setLookup(e.currentTarget.value)} required spellcheck={false} />
+        </label>
+        <button type="submit" class="button">
+          {t("admin.find")}
+        </button>
+      </form>
+      {project && (
+        <div class="admin-project">
+          <p>
+            <span class="project-name">{project.name}</span>{" "}
+            {project.shared === 1 && <span class="mark">{t("admin.isShared")}</span>}{" "}
+            {project.deleted_at !== null && <span class="mark">{t("admin.inTrash")}</span>}
+          </p>
+          <p>{t("admin.owner", { email: project.owner })}</p>
+          <p class="dim">{t("admin.files", { count: project.files, when: when(project.updated_at) })}</p>
+          <p>
+            <a href={preview!} target="_blank" rel="noopener noreferrer">
+              {t("admin.openPreview")}
+            </a>
+          </p>
+          {project.blocked_reason !== null ? (
+            <>
+              <p class="blocked">{t("admin.blockedBecause", { reason: project.blocked_reason })}</p>
+              <button
+                type="button"
+                class="button"
+                onClick={() => act(() => api("POST", `/api/admin/projects/${project.name}`, { block: false }).then(() => findProject(project.name)))}
+              >
+                {t("admin.unblock")}
+              </button>
+            </>
+          ) : (
+            <form
+              class="row-form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void act(() =>
+                  api("POST", `/api/admin/projects/${project.name}`, { block: true, reason: blockReason }).then(() => {
+                    setBlockReason("");
+                    return findProject(project.name);
+                  }),
+                );
+              }}
+            >
+              <label class="wide">
+                {t("admin.reason")}
+                <input value={blockReason} onInput={(e) => setBlockReason(e.currentTarget.value)} required maxLength={1000} />
+              </label>
+              <button type="submit" class="button">
+                {t("admin.block")}
+              </button>
+            </form>
+          )}
+        </div>
+      )}
+
+      <h2>{t("admin.people")}</h2>
+      <form
+        class="row-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void act(() => findPeople(query));
+        }}
+      >
+        <label>
+          {t("admin.search")}
+          <input type="search" value={query} onInput={(e) => setQuery(e.currentTarget.value)} spellcheck={false} />
+        </label>
+        <button type="submit" class="button">
+          {t("admin.find")}
+        </button>
+      </form>
+      <ul class="projects">
+        {people.map((p) => (
+          <li key={p.id} class={p.suspended_at ? "dim" : ""}>
+            <span class="project-name">{p.email}</span>
+            <span class="dim">{t("admin.personLine", { count: p.projects, when: when(p.seen_at) })}</span>
+            {p.suspended_at && <span class="reason blocked">{t("admin.suspended", { reason: p.suspended_reason })}</span>}
+            <span class="grow" />
+            {p.suspended_at ? (
+              <button
+                type="button"
+                class="button"
+                onClick={() => act(() => api("POST", `/api/admin/people/${p.id}`, { suspend: false }).then(() => findPeople(query)))}
+              >
+                {t("admin.restore")}
+              </button>
+            ) : (
+              <button type="button" class="button quiet" onClick={() => suspend(p)}>
+                {t("admin.suspend")}
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+
+      <h2>{t("admin.log")}</h2>
+      {state.moderation.length === 0 && <p class="dim">{t("admin.logEmpty")}</p>}
+      <ul class="projects">
+        {state.moderation.map((m) => (
+          <li key={`${m.at}-${m.target}`}>
+            <span class="dim">{when(m.at)}</span>
+            <span>
+              {m.admin} {t(`admin.action.${m.action}`)} <strong>{m.target}</strong>
+            </span>
+            {m.reason && <span class="reason">{m.reason}</span>}
           </li>
         ))}
       </ul>

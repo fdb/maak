@@ -4,7 +4,7 @@ import { type Me, api } from "./api";
 import { EditorPage } from "./editor";
 import { type Lang, setLang, t } from "./i18n";
 import { initTheme } from "./look";
-import { Admin, CopyPage, Front, Projects, Report, TextPage } from "./pages";
+import { Account, Admin, CopyPage, Front, Projects, Report, TextPage } from "./pages";
 import "@fontsource-variable/atkinson-hyperlegible-next";
 import "@fontsource-variable/jetbrains-mono";
 import "./style.css";
@@ -57,7 +57,8 @@ function App() {
   else if (first === "e" && name) page = me.user ? <EditorPage me={me} name={name} readOnly={false} /> : signIn;
   else if (first === "p" && name) page = <EditorPage me={me} name={name} readOnly={true} />;
   else if (first === "copy" && name) page = me.user ? <CopyPage name={name} /> : signIn;
-  else if (first === "admin") page = me.user?.admin ? <Admin /> : signIn;
+  else if (first === "account") page = me.user ? <Account me={me} lang={lang} onLang={changeLang} /> : signIn;
+  else if (first === "admin") page = me.user?.admin ? <Admin me={me} /> : signIn;
   else if (first === "report") page = <Report />;
   else if (first === "about" || first === "terms" || first === "privacy") page = <TextPage which={first} me={me} />;
   else

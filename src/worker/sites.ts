@@ -16,6 +16,10 @@ import { type Env, type Project, blobKey, sameString } from "./env";
 import { injectHelper } from "./helper";
 import { readSnapshot } from "./projects";
 
+/** Projects that may be served: not in the trash, and the owner is not suspended. */
+const LIVE =
+  "SELECT p.* FROM projects p JOIN users u ON u.id = p.owner_id AND u.suspended_at IS NULL WHERE p.deleted_at IS NULL AND";
+
 interface Entry {
   kind: string;
   hash: string;
@@ -79,7 +83,7 @@ export async function serveSite(req: Request, env: Env, label: string): Promise<
   let project: Project | null = null;
   let snapshot: Map<string, Entry> | null = null;
   if (parts.length === 1) {
-    project = await db.prepare("SELECT * FROM projects WHERE name = ? AND deleted_at IS NULL").bind(label).first<Project>();
+    project = await db.prepare(`${LIVE} p.name = ?`).bind(label).first<Project>();
     if (!project) {
       // A renamed project answers on its old name for 30 days.
       const moved = await db.prepare(
@@ -93,10 +97,10 @@ export async function serveSite(req: Request, env: Env, label: string): Promise<
     }
     if (!project || project.shared !== 1) return notFound(url.pathname);
   } else if (parts.length === 2 || (parts.length === 3 && parts[0] !== "0" && /^\d{1,3}$/.test(parts[2]))) {
-    project = await db.prepare("SELECT * FROM projects WHERE name = ? AND deleted_at IS NULL").bind(parts[0]).first<Project>();
+    project = await db.prepare(`${LIVE} p.name = ?`).bind(parts[0]).first<Project>();
     if (!project || !sameString(project.secret, parts[1])) return notFound(url.pathname);
   } else if (parts.length === 3 && parts[0] === "0") {
-    project = await db.prepare("SELECT * FROM projects WHERE secret = ? AND deleted_at IS NULL").bind(parts[1]).first<Project>();
+    project = await db.prepare(`${LIVE} p.secret = ?`).bind(parts[1]).first<Project>();
     const manifest = project && (await readSnapshot(env, project.id, parts[2]));
     if (!project || !manifest) return notFound(url.pathname);
     snapshot = new Map(manifest.map((f) => [f.path, f]));

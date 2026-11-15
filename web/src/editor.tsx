@@ -20,7 +20,7 @@ import {
   Upload,
 } from "lucide-preact";
 import { Fragment } from "preact";
-import { useEffect, useMemo, useRef, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import { LIMITS, boxOf, isImage, pathHint } from "../../src/shared/rules";
 import { type FileRow, type Me, type ProjectInfo, api } from "./api";
 import { DRAG, type Drops, EditorView, emptyState, makeState, type EditorState } from "./cm";
@@ -422,18 +422,6 @@ function TopBar({
           >
             <Share store={store} />
           </Popover>
-          <button
-            type="button"
-            class="button"
-            aria-label={t("bar.zip")}
-            title={t("bar.zip")}
-            onClick={() =>
-              void downloadProject(store).catch((e) => store.fail(e))
-            }
-          >
-            <Download {...ICON} />
-            <span class="label">{t("bar.zip")}</span>
-          </button>
           <Menu
             label={<Ellipsis {...ICON} />}
             title={t("bar.more")}
@@ -442,6 +430,12 @@ function TopBar({
                 label: t("bar.history"),
                 icon: <HistoryIcon {...ICON} />,
                 run: onHistory,
+              },
+              {
+                label: t("bar.zip"),
+                icon: <Download {...ICON} />,
+                run: () =>
+                  void downloadProject(store).catch((e) => store.fail(e)),
               },
               { label: t("bar.copy"), icon: <Copy {...ICON} />, run: copy },
               {
@@ -473,6 +467,13 @@ function TopBar({
 function Share({ store }: { store: EditorStore }) {
   const { project } = store;
   const copyLink = `${location.origin}/copy/${project.name}`;
+  if (project.blocked) {
+    return (
+      <div class="share">
+        <p class="blocked">{t("share.blocked", { reason: project.blocked })}</p>
+      </div>
+    );
+  }
   return (
     <div class="share">
       <label class="switch">
@@ -901,7 +902,7 @@ function Box({ store, box }: { store: EditorStore; box: number }) {
   const candidates = store.filesOfBox(box);
   const name = path ? baseOf(path) : ["HTML", "CSS", "JS"][box];
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     view.current = new EditorView({
       parent: host.current!,
       state: emptyState(),
@@ -909,7 +910,9 @@ function Box({ store, box }: { store: EditorStore; box: number }) {
     return () => view.current?.destroy();
   }, []);
 
-  useEffect(() => {
+  // Before the browser paints: the code on screen is never that of another file than the one
+  // the dropdown names, so typing cannot land in the file that was open a moment ago.
+  useLayoutEffect(() => {
     const v = view.current!;
     if (shown.current) states.current.set(shown.current, v.state);
     shown.current = key;
@@ -933,8 +936,9 @@ function Box({ store, box }: { store: EditorStore; box: number }) {
   }, [folded]);
 
   // A file that was just made by name is ready to type in.
-  useEffect(() => {
-    if (store.wantFocus !== box || !key) return;
+  // It waits until this box holds that file.
+  useLayoutEffect(() => {
+    if (!key || store.wantFocus !== path) return;
     store.wantFocus = null;
     view.current?.focus();
   });

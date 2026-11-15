@@ -69,6 +69,7 @@ async function insertProject(env: Env, ownerId: string, copiedFrom: string | nul
     created_at: now,
     updated_at: now,
     deleted_at: null,
+    blocked_reason: null,
   };
   await env.DB.prepare(
     "INSERT INTO projects (id, owner_id, name, secret, shared, copied_from, rev_seq, created_at, updated_at) VALUES (?, ?, ?, ?, 0, ?, 1, ?, ?)",

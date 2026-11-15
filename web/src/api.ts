@@ -22,6 +22,8 @@ export interface ProjectInfo {
   shared: boolean;
   owner: boolean;
   secret?: string;
+  /** Set when an admin blocked sharing; the reason they gave. Only the owner gets it. */
+  blocked?: string | null;
   created_at: number;
   updated_at: number;
   deleted_at: number | null;

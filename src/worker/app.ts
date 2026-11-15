@@ -2,7 +2,7 @@
 
 import { type Context, Hono } from "hono";
 import { LIMITS, contentType, nameError, pathError } from "../shared/rules";
-import { callback, currentUser, login, logout } from "./auth";
+import { adminEmails, callback, currentUser, login, logout } from "./auth";
 import { DAY, type Env, type FileRow, type Project, type User, blobKey, randomHex, sha256 } from "./env";
 import {
   copyProject,
@@ -62,6 +62,7 @@ function publicProject(p: Project, user: User | null) {
     owner,
     secret: owner ? p.secret : undefined,
     copied_from: owner ? p.copied_from : undefined,
+    blocked: owner ? p.blocked_reason : undefined,
     created_at: p.created_at,
     updated_at: p.updated_at,
     deleted_at: p.deleted_at,
@@ -75,7 +76,12 @@ function publicProject(p: Project, user: User | null) {
 async function find(c: Ctx, mode: "read" | "write", opts: { trashed?: boolean } = {}): Promise<Project | null> {
   const ref = c.req.param("ref") ?? "";
   const column = ref.startsWith("p_") ? "id" : "name";
-  const project = await c.env.DB.prepare(`SELECT * FROM projects WHERE ${column} = ?`).bind(ref).first<Project>();
+  // A suspended person's projects are hidden from everyone but the admins, like their sites.
+  const project = await c.env.DB.prepare(
+    `SELECT p.* FROM projects p JOIN users u ON u.id = p.owner_id AND u.suspended_at IS NULL WHERE p.${column} = ?`,
+  )
+    .bind(ref)
+    .first<Project>();
   if (!project) return null;
   const owner = c.get("user")?.id === project.owner_id;
   if (project.deleted_at !== null) return owner && opts.trashed ? project : null;
@@ -92,6 +98,16 @@ function filePath(c: Ctx): string | null {
     return null;
   }
 }
+
+// What is live: the commit it was built from and the Worker version Cloudflare gave it.
+// The deploy smoke test waits for this to show the new commit.
+app.get("/api/version", (c) =>
+  c.json({
+    commit: c.env.COMMIT ?? "dev",
+    version: c.env.CF_VERSION_METADATA?.id ?? "dev",
+    at: c.env.CF_VERSION_METADATA?.timestamp ?? "",
+  }),
+);
 
 app.get("/api/me", (c) => {
   const user = c.get("user");
@@ -186,6 +202,7 @@ app.patch("/api/projects/:ref", async (c) => {
       db.prepare("UPDATE projects SET name = ? WHERE id = ?").bind(body.name, project.id),
     ]);
   }
+  if (body.shared === true && project.blocked_reason !== null) return fail(c, 409, "blocked");
   if (typeof body.shared === "boolean") {
     await db.prepare("UPDATE projects SET shared = ? WHERE id = ?").bind(body.shared ? 1 : 0, project.id).run();
   }
@@ -396,8 +413,25 @@ app.post("/api/reports", async (c) => {
   await c.env.DB.prepare("INSERT INTO reports (project_name, reason, created_at) VALUES (?, ?, ?)")
     .bind(cleanName, reason.trim(), Date.now())
     .run();
+  c.executionCtx.waitUntil(mailReport(c.env, new URL(c.req.url).origin, cleanName, reason.trim()));
   return c.json({ ok: true });
 });
+
+/** Tells the admins about a report. The report is already stored, so a failed mail loses nothing. */
+async function mailReport(env: Env, origin: string, name: string, reason: string): Promise<void> {
+  const to = adminEmails(env);
+  if (!env.MAIL || !env.MAIL_FROM || to.length === 0) return;
+  try {
+    await env.MAIL.send({
+      from: { email: env.MAIL_FROM, name: "maak.io" },
+      to,
+      subject: `Report about ${name}`,
+      text: `Someone reported the project "${name}".\n\n${reason}\n\nHandle it at ${origin}/admin\n`,
+    });
+  } catch (e) {
+    console.error("report mail", (e as { code?: string }).code ?? "", (e as Error).message);
+  }
+}
 
 app.use("/api/admin/*", async (c, next) => {
   if (c.get("user")?.is_admin !== 1) return fail(c, 404, "not-found");
@@ -406,14 +440,15 @@ app.use("/api/admin/*", async (c, next) => {
 
 app.get("/api/admin/state", async (c) => {
   const db = c.env.DB;
-  const [allowed, invites, reports] = await db.batch([
+  const [allowed, invites, reports, moderation] = await db.batch([
     db.prepare("SELECT pattern, note FROM allowed ORDER BY pattern"),
     db.prepare("SELECT code, uses_left, expires_at FROM invites WHERE expires_at > ? ORDER BY expires_at").bind(Date.now()),
     db.prepare(
       "SELECT r.id, r.project_name, r.reason, r.created_at, r.handled_at, p.shared FROM reports r LEFT JOIN projects p ON p.name = r.project_name ORDER BY r.handled_at IS NOT NULL, r.created_at DESC LIMIT 200",
     ),
+    db.prepare("SELECT at, admin, action, target, reason FROM moderation ORDER BY id DESC LIMIT 50"),
   ]);
-  return c.json({ allowed: allowed.results, invites: invites.results, reports: reports.results });
+  return c.json({ allowed: allowed.results, invites: invites.results, reports: reports.results, moderation: moderation.results });
 });
 
 app.post("/api/admin/allowed", async (c) => {
@@ -450,12 +485,95 @@ app.post("/api/admin/invites", async (c) => {
 });
 
 app.post("/api/admin/reports/:id", async (c) => {
-  const { unshare } = await c.req.json<{ unshare?: boolean }>();
   const db = c.env.DB;
-  const report = await db.prepare("SELECT project_name FROM reports WHERE id = ?").bind(c.req.param("id")).first<{ project_name: string }>();
-  if (!report) return fail(c, 404, "not-found");
-  if (unshare) await db.prepare("UPDATE projects SET shared = 0 WHERE name = ?").bind(report.project_name).run();
-  await db.prepare("UPDATE reports SET handled_at = ? WHERE id = ?").bind(Date.now(), c.req.param("id")).run();
+  const done = await db.prepare("UPDATE reports SET handled_at = ? WHERE id = ? AND handled_at IS NULL")
+    .bind(Date.now(), c.req.param("id"))
+    .run();
+  if (done.meta.changes !== 1) return fail(c, 404, "not-found");
+  return c.json({ ok: true });
+});
+
+function logAction(c: Ctx, action: string, target: string, reason: string) {
+  return c.env.DB.prepare("INSERT INTO moderation (at, admin, action, target, reason) VALUES (?, ?, ?, ?, ?)").bind(
+    Date.now(),
+    c.get("user")!.email,
+    action,
+    target,
+    reason,
+  );
+}
+
+function cleanReason(reason: unknown): string | null {
+  const text = typeof reason === "string" ? reason.trim() : "";
+  return text && text.length <= 1000 ? text : null;
+}
+
+/** One project as an admin sees it: owner, state, and the private preview address to look at it. */
+app.get("/api/admin/projects/:name", async (c) => {
+  const row = await c.env.DB.prepare(
+    `SELECT p.name, p.secret, p.shared, p.blocked_reason, p.deleted_at, p.updated_at, u.email AS owner, u.suspended_at,
+       (SELECT COUNT(*) FROM files f WHERE f.project_id = p.id AND f.kind = 'file') AS files
+     FROM projects p JOIN users u ON u.id = p.owner_id WHERE p.name = ?`,
+  )
+    .bind(c.req.param("name").trim().toLowerCase())
+    .first();
+  if (!row) return fail(c, 404, "not-found");
+  return c.json({ project: row });
+});
+
+// Blocking takes the site offline and stops the owner from sharing it again. The owner sees the
+// reason in the project list and the editor. Every block and unblock is logged with its reason.
+app.post("/api/admin/projects/:name", async (c) => {
+  const { block, reason } = await c.req.json<{ block?: boolean; reason?: string }>();
+  const name = c.req.param("name");
+  const why = cleanReason(reason);
+  if (block && !why) return fail(c, 400, "reason");
+  const db = c.env.DB;
+  const update = block
+    ? db.prepare("UPDATE projects SET blocked_reason = ?, shared = 0 WHERE name = ?").bind(why, name)
+    : db.prepare("UPDATE projects SET blocked_reason = NULL WHERE name = ?").bind(name);
+  const [done] = await db.batch([update, logAction(c, block ? "block" : "unblock", name, why ?? "")]);
+  if (done.meta.changes !== 1) return fail(c, 404, "not-found");
+  if (block) {
+    await db.prepare("UPDATE reports SET handled_at = ? WHERE project_name = ? AND handled_at IS NULL").bind(Date.now(), name).run();
+  }
+  return c.json({ ok: true });
+});
+
+app.get("/api/admin/people", async (c) => {
+  const q = (c.req.query("q") ?? "").trim().toLowerCase();
+  const { results } = await c.env.DB.prepare(
+    `SELECT u.id, u.email, u.created_at, u.seen_at, u.suspended_at, u.suspended_reason,
+       (SELECT COUNT(*) FROM projects p WHERE p.owner_id = u.id AND p.deleted_at IS NULL) AS projects
+     FROM users u WHERE instr(u.email, ?) > 0 ORDER BY u.seen_at DESC LIMIT 100`,
+  )
+    .bind(q)
+    .all();
+  return c.json({ people: results });
+});
+
+// A suspension ends every session at once, refuses sign-in, and takes the person's sites and
+// previews offline. Lifting it brings all of that back as it was. Admins cannot be suspended.
+app.post("/api/admin/people/:id", async (c) => {
+  const { suspend, reason } = await c.req.json<{ suspend?: boolean; reason?: string }>();
+  const db = c.env.DB;
+  const person = await db.prepare("SELECT id, email FROM users WHERE id = ?").bind(c.req.param("id")).first<{ id: string; email: string }>();
+  if (!person) return fail(c, 404, "not-found");
+  const why = cleanReason(reason);
+  if (suspend && !why) return fail(c, 400, "reason");
+  if (suspend && adminEmails(c.env).includes(person.email)) return fail(c, 409, "admin");
+  await db.batch(
+    suspend
+      ? [
+          db.prepare("UPDATE users SET suspended_at = ?, suspended_reason = ? WHERE id = ?").bind(Date.now(), why, person.id),
+          db.prepare("DELETE FROM sessions WHERE user_id = ?").bind(person.id),
+          logAction(c, "suspend", person.email, why!),
+        ]
+      : [
+          db.prepare("UPDATE users SET suspended_at = NULL, suspended_reason = '' WHERE id = ?").bind(person.id),
+          logAction(c, "restore", person.email, why ?? ""),
+        ],
+  );
   return c.json({ ok: true });
 });
 

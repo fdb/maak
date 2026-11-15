@@ -12,6 +12,13 @@ export interface Env {
   /** Comma-separated addresses that may always sign in and are admins. */
   ADMIN_EMAILS?: string;
   CONTACT?: string;
+  /** The git commit of this build, set at deploy with --var COMMIT:<sha>. */
+  COMMIT?: string;
+  CF_VERSION_METADATA?: WorkerVersionMetadata;
+  /** Sends a note to the admins when someone files a report. */
+  MAIL?: SendEmail;
+  /** The sender for that note, on a domain onboarded to Cloudflare Email Sending. */
+  MAIL_FROM?: string;
 }
 
 export interface User {
@@ -35,6 +42,7 @@ export interface Project {
   created_at: number;
   updated_at: number;
   deleted_at: number | null;
+  blocked_reason: string | null;
 }
 
 export interface FileRow {

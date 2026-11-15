@@ -7,20 +7,25 @@ One Cloudflare Worker, one D1 database, one R2 bucket. Student code is stored an
 
 - Verify: `npm test` (type check, build, then Playwright: rules, API over HTTP, editor in Chromium). Needs `npx playwright install chromium` once.
 - Develop: `npm run dev`, then open http://localhost:8787. Sign-in goes to a local provider on :8788 that accepts any address. `admin@school.test` is the admin.
-- Deploy: `npm test && npx wrangler deploy --env production`. Schema changes first: `npx wrangler d1 migrations apply maak --env production --remote`. The top level of `wrangler.jsonc` is local development; `env.production` is the live site.
-- Branch policy and base branch: not recorded. This folder is not a git repository yet.
+- Deploy: `npm test && npm run deploy` (`scripts/deploy.mjs`: build, migrations, deploy with `COMMIT`, smoke test, rollback if the smoke test fails). A migration is not rolled back, so it must keep working with the code before it. The top level of `wrangler.jsonc` is local development; `env.production` is the live site.
+- CI: `.github/workflows/deploy.yml` tests every push and pull request and deploys a push to `main`. It needs the secret `CLOUDFLARE_API_TOKEN` in the GitHub environment `production`. `uptime.yml` runs `scripts/smoke.mjs` every 30 minutes; GitHub mails the owner on failure.
+- Live version: `https://maak.io/api/version` gives the commit (`-dirty` for a deploy from uncommitted work) and the Worker version id for `wrangler rollback`.
+- Backup: `npm run backup` writes the database and every file it points at to `~/Backups/maak` (fetches only new files). `scripts/restore.mjs <backup>` restores into `.wrangler/restore`; `node scripts/dev.mjs --state .wrangler/restore` serves it. Rehearsed 14 November 2026: the restored files matched production byte for byte. D1 Time Travel covers the last 7 days on the free plan.
+- Repository: https://github.com/fdb/maak, public. Base branch `main`. Branch policy: not recorded.
 
 ## Production
 
 - Cloudflare account Enigmeta. Worker `maak` on routes `maak.io/*` and `*.maak.io/*`, D1 `maak` (location hint Western Europe), R2 `maak-files` (EU jurisdiction).
 - Sign-in is Google, OAuth client `maak.io web` in the Google Cloud project `maakio`, redirect `https://maak.io/auth/callback`.
-- Secrets, set with `npx wrangler secret put <NAME> --env production`: `OIDC_CLIENT_SECRET`, `ADMIN_EMAILS` (comma-separated), `CONTACT`. Without `ADMIN_EMAILS` and an allow-list entry nobody can sign in.
+- Secrets, set with `npx wrangler secret put <NAME> --env production`: `OIDC_CLIENT_SECRET`, `ADMIN_EMAILS` (comma-separated). `CONTACT` is a plain variable in `wrangler.jsonc`. Without `ADMIN_EMAILS` and an allow-list entry nobody can sign in.
+- Mail: Cloudflare Email Routing forwards `info@maak.io` to the owner. `CONTACT` shows that address on the about and privacy pages. Each report sends a note to `ADMIN_EMAILS` through the `send_email` binding `MAIL`, from `MAIL_FROM` (`reports@mail.maak.io`), which needs `mail.maak.io` onboarded to Cloudflare Email Sending. Locally the mail is simulated and printed. A failed send is logged; the report is stored either way.
 - DNS: a proxied wildcard record `*` (A 192.0.2.1, a placeholder) sends every `name.maak.io` to the Worker. `staging.maak.io` is a DNS-only record to another server and is a reserved project name.
 
 ## Look
 
 - One grid of panels that share single lines; no panel has its own border. Box headers are a small label, not a bar. The three column headers share one height.
-- No button has an outline. A button is an icon and a word with a soft fill on hover; Share is the one filled button. An action that explains itself is an icon with a tooltip (new file, new folder, reload, more); one that does not carries its word (Upload, Download ZIP, Open).
+- No button has an outline. A button is an icon and a word with a soft fill on hover; Share is the one filled button. An action that explains itself is an icon with a tooltip (new file, new folder, reload, more); one that does not carries its word (Upload, Open). Download ZIP is in the editor's More menu.
+- The editor bar is one line on a wide screen. On a phone it is two: maak, then the save status and the theme on the right; below, the address, then Share and More on the right (CSS `order` in `style.css`).
 - Icons are Lucide (`lucide-preact`, ISC), imported by name so only the used ones ship.
 - Atkinson Hyperlegible Next for the interface, JetBrains Mono for code, both self-hosted from `@fontsource-variable` (OFL). The editor loads nothing from another party; a test checks this.
 - Colours are CSS variables in `web/src/style.css`, with a dark set under `:root[data-theme="dark"]`. The code editor reads the same variables, so a theme needs no editor code. Code ligatures are off on purpose.
@@ -31,6 +36,17 @@ One Cloudflare Worker, one D1 database, one R2 bucket. Student code is stored an
 - Emmet is on for HTML only, on Tab, and guarded (`expandOnTab` in `web/src/cm.ts`): it expands only when the abbreviation starts with a real HTML tag, `.class`, `#id` or `!`, and the cursor is in page text. Without the guard Emmet turns any word into a tag. The spec had Emmet off; this was a later decision.
 - An image dropped on HTML code becomes `<img src alt>` at that spot, with a path relative to the HTML file. From the computer it is uploaded next to that file first.
 - Opening an HTML file (tree, dropdown, new file, duplicate) also shows that page in the preview.
+
+## Project list
+
+- Each project in the list shows its own page, small, in a frame on the private alias with an empty `sandbox`. No script of the student runs in the list, so a page that hangs or plays sound cannot do so there. A page that builds itself with JavaScript shows only its HTML and CSS.
+- Download all and delete account are on `/account`. Sign out is the last item of the account menu.
+
+## Moderation
+
+- An admin blocks a project with a reason: sharing goes off, the owner cannot switch it on again, and sees the reason in the list and the editor. Blocking marks that project's open reports as handled.
+- An admin suspends a person with a reason: their sessions end, sign-in is refused (`/?refused=suspended`), and their sites, previews and shared code answer 404. Lifting it restores all of that. Admins cannot be suspended.
+- Every block, unblock, suspension and restore goes into the `moderation` table with the admin and the reason, shown as the log on `/admin`.
 
 ## Uploads
 

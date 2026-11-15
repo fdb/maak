@@ -115,7 +115,7 @@ async function verifyIdToken(token: string, doc: Discovery, env: Env, nonce: str
   return claims;
 }
 
-function adminEmails(env: Env): string[] {
+export function adminEmails(env: Env): string[] {
   return (env.ADMIN_EMAILS ?? "").split(",")
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean);
@@ -223,15 +223,16 @@ export async function callback(req: Request, env: Env): Promise<Response> {
   const now = Date.now();
   const isAdmin = adminEmails(env).includes(email) ? 1 : 0;
   let next = flow.next;
-  let user = await env.DB.prepare("SELECT id FROM users WHERE provider = ? AND subject = ?")
+  let user = await env.DB.prepare("SELECT id, suspended_at FROM users WHERE provider = ? AND subject = ?")
     .bind(doc.issuer, claims.sub)
-    .first<{ id: string }>();
+    .first<{ id: string; suspended_at: number | null }>();
+  if (user?.suspended_at && !isAdmin) return refused("suspended");
   if (user) {
     await env.DB.prepare("UPDATE users SET email = ?, is_admin = ?, seen_at = ? WHERE id = ?")
       .bind(email, isAdmin, now, user.id)
       .run();
   } else {
-    user = { id: `u_${randomHex(8)}` };
+    user = { id: `u_${randomHex(8)}`, suspended_at: null };
     const lang = (req.headers.get("Accept-Language") ?? "").toLowerCase().startsWith("en") ? "en" : "nl";
     await env.DB.prepare(
       "INSERT INTO users (id, provider, subject, email, name, lang, is_admin, created_at, seen_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -265,7 +266,7 @@ export async function currentUser(req: Request, env: Env): Promise<User | null> 
   if (!token || !/^[0-9a-f]{64}$/.test(token)) return null;
   const now = Date.now();
   const user = await env.DB.prepare(
-    "SELECT u.id, u.email, u.name, u.lang, u.is_admin, u.seen_at FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ? AND s.expires_at > ?",
+    "SELECT u.id, u.email, u.name, u.lang, u.is_admin, u.seen_at FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ? AND s.expires_at > ? AND u.suspended_at IS NULL",
   )
     .bind(await sha256(token), now)
     .first<User>();

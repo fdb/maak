@@ -135,7 +135,8 @@ test("the ZIP holds exactly the student's files, in one folder named after the p
   await setBox(page, 1, "h1 { color: teal; }");
 
   const download = page.waitForEvent("download");
-  await page.getByRole("button", { name: "ZIP downloaden" }).click();
+  await page.getByRole("button", { name: "Meer" }).click();
+  await page.getByRole("menuitem", { name: "ZIP downloaden" }).click();
   const file = await download;
   expect(file.suggestedFilename()).toBe(`${name}.zip`);
   const entries = unzipSync(readFileSync(await file.path()));
@@ -363,6 +364,8 @@ test("the editor works by keyboard: new file, Cmd+S, menus", async ({ page }) =>
   await page.keyboard.press("Enter");
   await expect(page.getByRole("menuitem", { name: "Geschiedenis" })).toBeFocused();
   await page.keyboard.press("ArrowDown");
+  await expect(page.getByRole("menuitem", { name: "ZIP downloaden" })).toBeFocused();
+  await page.keyboard.press("ArrowDown");
   await expect(page.getByRole("menuitem", { name: "Kopie maken" })).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("menu")).toHaveCount(0);
@@ -409,7 +412,6 @@ test("the project list: new, rename, duplicate, trash, and the interface in Engl
   await expect(page.getByRole("button", { name: "New project" })).toBeVisible();
   await page.getByRole("link", { name }).click();
   await expect(page.getByRole("button", { name: "Share" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Download ZIP" })).toBeVisible();
   await expect(page.locator(".status")).toHaveText("Saved");
   await expect(page.getByRole("button", { name: "New file" })).toBeVisible();
   expect(email).toContain("@school.test");
@@ -450,7 +452,7 @@ test("the editor loads nothing from another party", async ({ page }) => {
   expect(allowed).toEqual([]);
 });
 
-test("the admin handles the allow-list, invitations and reports; a visitor can send a report", async ({ page, browser }) => {
+test("the admin handles the allow-list, invitations and reports, and blocks a site; a visitor can send a report", async ({ page, browser }) => {
   const { name } = await signInPage(page, "reported");
   await page.getByRole("button", { name: "Delen" }).click();
   await page.getByRole("switch", { name: "Iedereen met de link kan kijken" }).check();
@@ -476,12 +478,27 @@ test("the admin handles the allow-list, invitations and reports; a visitor can s
   await visitor.getByLabel("Email").fill("admin@school.test");
   await visitor.getByRole("button", { name: "Sign in" }).click();
   await visitor.waitForURL("**/admin");
-  const report = visitor.locator("li", { hasText: name });
+  const report = visitor.locator("li", { hasText: "inlogpagina van een bank" });
   await expect(report).toContainText("inlogpagina van een bank");
   await visitor.screenshot({ path: "test-results/admin.png", fullPage: true });
-  await report.getByRole("button", { name: "Delen uitzetten" }).click();
+  await report.getByRole("button", { name: "Bekijken" }).click();
+  await expect(visitor.locator(".admin-project")).toContainText("Eigenaar: reported-");
+  await visitor.getByLabel("Reden, die de eigenaar te zien krijgt").fill("Vraagt om bankgegevens.");
+  await visitor.getByRole("button", { name: "Blokkeren" }).click();
+  await expect(visitor.locator(".admin-project .blocked")).toHaveText("Geblokkeerd: Vraagt om bankgegevens.");
   await expect(report).toContainText("afgehandeld");
+  await expect(visitor.locator("li", { hasText: `blokkeerde ${name}` })).toContainText("Vraagt om bankgegevens.");
   expect((await call(site(name), "GET", "/")).status).toBe(404);
+  await visitor.screenshot({ path: "test-results/admin-blocked.png", fullPage: true });
+
+  // The owner sees the reason where the switch was, and in the project list.
+  await page.reload();
+  await page.getByRole("button", { name: "Delen" }).click();
+  await expect(page.locator(".share .blocked")).toContainText("Reden: Vraagt om bankgegevens.");
+  await expect(page.locator(".share").getByRole("switch")).toHaveCount(0);
+  await page.goto("/");
+  await expect(page.locator("li", { hasText: name }).locator(".blocked")).toContainText("Vraagt om bankgegevens.");
+  await page.screenshot({ path: "test-results/list-blocked.png" });
 
   await visitor.getByRole("button", { name: "Uitnodiging maken" }).click();
   await expect(visitor.locator("code").first()).toContainText("/?invite=");
@@ -609,6 +626,36 @@ test("large images are resized in the browser before the upload, all in the same
   await page.getByRole("dialog").getByRole("button", { name: "Annuleren" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   expect((await call(APP, "GET", filesUrl(name, "toch-niet.png"), { cookie })).status).toBe(404);
+});
+
+test("on a phone the bar has two lines: maak, status and theme; then the address, Share and More", async ({ page }) => {
+  await signInPage(page, "bar");
+  await page.setViewportSize({ width: 390, height: 800 });
+  const bar = page.locator("header.bar");
+  const box = async (locator: import("@playwright/test").Locator) => (await locator.boundingBox())!;
+  const middle = (b: { y: number; height: number }) => b.y + b.height / 2;
+  const home = await box(bar.locator(".home"));
+  const status = await box(bar.locator(".status"));
+  const theme = await box(bar.getByRole("switch"));
+  const address = await box(bar.locator(".address"));
+  const share = await box(bar.getByRole("button", { name: "Delen" }));
+  const more = await box(bar.getByRole("button", { name: "Meer" }));
+  // One line each: the middles agree within a few pixels.
+  for (const b of [status, theme]) expect(Math.abs(middle(b) - middle(home))).toBeLessThan(6);
+  for (const b of [share, more]) expect(Math.abs(middle(b) - middle(address))).toBeLessThan(6);
+  expect(middle(address)).toBeGreaterThan(middle(home) + 20);
+  // Left and right.
+  expect(home.x).toBeLessThan(status.x);
+  expect(status.x).toBeLessThan(theme.x);
+  expect(theme.x + theme.width).toBeGreaterThan(390 - 40);
+  expect(more.x + more.width).toBeGreaterThan(390 - 40);
+  expect(address.x).toBeLessThan(40);
+  // Download ZIP lives in the More menu.
+  await expect(bar.getByRole("button", { name: "ZIP downloaden" })).toHaveCount(0);
+  await bar.getByRole("button", { name: "Meer" }).click();
+  await expect(page.getByRole("menuitem", { name: "ZIP downloaden" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.screenshot({ path: "test-results/phone-bar.png", clip: { x: 0, y: 0, width: 390, height: 160 } });
 });
 
 test("on a phone the Share panel and the More menu stay on the screen", async ({ page }) => {
@@ -968,4 +1015,44 @@ test("Tab expands Emmet abbreviations in HTML, and only where that is meant", as
   await page.keyboard.type("img");
   await page.keyboard.press("Tab");
   expect((await page.locator(".box").nth(1).locator(".cm-line").first().textContent())!.trim()).toBe("img");
+});
+
+test("the account menu ends with sign out, and download and delete are on the account page", async ({ page }) => {
+  const { email } = await signInPage(page, "account");
+  await page.goto("/");
+  await page.getByRole("button", { name: "Account" }).click();
+  const items = page.getByRole("menuitem");
+  await expect(items.last()).toHaveText("Afmelden");
+  await expect(page.getByRole("menuitem", { name: "Account verwijderen" })).toHaveCount(0);
+  await expect(page.getByRole("menuitem", { name: "Al mijn projecten downloaden" })).toHaveCount(0);
+
+  await page.getByRole("menuitem", { name: "Account", exact: true }).click();
+  await expect(page).toHaveURL(/\/account$/);
+  await expect(page.locator("h1")).toHaveText("Account");
+  await expect(page.locator("main")).toContainText(email);
+
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Al mijn projecten downloaden" }).click();
+  expect((await download).suggestedFilename()).toBe("maak.zip");
+
+  await page.getByRole("textbox").fill(email);
+  await page.getByRole("button", { name: "Mijn account verwijderen" }).click();
+  await expect(page.getByRole("link", { name: "Aanmelden" })).toBeVisible();
+});
+
+test("each project in the list shows its page as a small picture that runs no script", async ({ page }) => {
+  const { name } = await signInPage(page, "thumbs");
+  await setBox(page, 0, "<h1>Klein beeld</h1><script>document.title = 'ran'; document.body.append('SCRIPT')</script>");
+  await expect(page.locator(".status")).toHaveText("Opgeslagen");
+  await page.goto("/");
+  const frame = page.locator(".projects li iframe");
+  await expect(frame).toHaveCount(1);
+  expect(await frame.getAttribute("src")).toMatch(new RegExp(`^http://${name}--[0-9a-f]+\\.`));
+  expect(await frame.getAttribute("sandbox")).toBe("");
+  const inside = page.frameLocator(".projects li iframe");
+  await expect(inside.locator("h1")).toHaveText("Klein beeld");
+  await expect(inside.locator("body")).not.toContainText("SCRIPT");
+  // The picture is a way into the project, like the name.
+  await page.locator(".projects li .thumb").click();
+  await expect(page).toHaveURL(new RegExp(`/e/${name}$`));
 });

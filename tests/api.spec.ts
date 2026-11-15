@@ -452,17 +452,75 @@ test.describe("projects", () => {
     expect((await call(old, "GET", "/")).status).toBe(404);
   });
 
-  test("a report reaches the admin, who can switch off sharing with it", async () => {
+  test("a report reaches the admin, who blocks the site with a reason the owner sees", async () => {
     const admin = await setUp();
     const a = await person("reported");
-    await call(APP, "PATCH", `/api/projects/${a.project.id}`, { cookie: a.cookie, body: { shared: true } });
+    const url = `/api/projects/${a.project.id}`;
+    await call(APP, "PATCH", url, { cookie: a.cookie, body: { shared: true } });
     expect((await call(APP, "POST", "/api/reports", { body: { name: a.project.name, reason: "phishing page" } })).status).toBe(200);
     expect((await call(APP, "POST", "/api/reports", { body: { name: a.project.name, reason: "" } })).status).toBe(400);
     const state = await call(APP, "GET", "/api/admin/state", { cookie: admin.cookie });
     const report = state.json.reports.find((r: any) => r.project_name === a.project.name);
     expect(report.reason).toBe("phishing page");
-    await call(APP, "POST", `/api/admin/reports/${report.id}`, { cookie: admin.cookie, body: { unshare: true } });
+
+    const target = `/api/admin/projects/${a.project.name}`;
+    const looked = await call(APP, "GET", target, { cookie: admin.cookie });
+    expect(looked.json.project.owner).toBe(a.email);
+    expect((await call(APP, "POST", target, { cookie: admin.cookie, body: { block: true } })).status).toBe(400);
+    await call(APP, "POST", target, { cookie: admin.cookie, body: { block: true, reason: "Asks for passwords." } });
     expect((await call(site(a.project.name), "GET", "/")).status).toBe(404);
+
+    // The owner keeps the project, sees why, and cannot share it again.
+    const own = await call(APP, "GET", url, { cookie: a.cookie });
+    expect(own.json.project.blocked).toBe("Asks for passwords.");
+    expect((await call(APP, "PATCH", url, { cookie: a.cookie, body: { shared: true } })).json.error).toBe("blocked");
+    const after = await call(APP, "GET", "/api/admin/state", { cookie: admin.cookie });
+    expect(after.json.reports.find((r: any) => r.id === report.id).handled_at).not.toBeNull();
+    expect(after.json.moderation[0]).toMatchObject({ action: "block", target: a.project.name, reason: "Asks for passwords." });
+
+    await call(APP, "POST", target, { cookie: admin.cookie, body: { block: false } });
+    expect((await call(APP, "PATCH", url, { cookie: a.cookie, body: { shared: true } })).status).toBe(200);
+    expect((await call(site(a.project.name), "GET", "/")).status).toBe(200);
+  });
+
+  test("a suspended person is signed out, cannot sign in, and their sites go offline until restored", async () => {
+    const admin = await setUp();
+    const a = await person("suspended");
+    await call(APP, "PATCH", `/api/projects/${a.project.id}`, { cookie: a.cookie, body: { shared: true } });
+    const alias = site(`${a.project.name}--${a.project.secret}`);
+    const found = await call(APP, "GET", `/api/admin/people?q=${encodeURIComponent(a.email)}`, { cookie: admin.cookie });
+    const id = found.json.people[0].id;
+    expect(found.json.people[0].projects).toBe(1);
+
+    await call(APP, "POST", `/api/admin/people/${id}`, { cookie: admin.cookie, body: { suspend: true, reason: "Spam." } });
+    expect((await call(APP, "GET", "/api/me", { cookie: a.cookie })).json.user).toBeNull();
+    expect((await signIn(a.email)).location).toBe("/?refused=suspended");
+    expect((await call(site(a.project.name), "GET", "/")).status).toBe(404);
+    expect((await call(alias, "GET", "/")).status).toBe(404);
+    expect((await call(APP, "GET", `/api/projects/${a.project.name}`)).status).toBe(404);
+
+    await call(APP, "POST", `/api/admin/people/${id}`, { cookie: admin.cookie, body: { suspend: false } });
+    expect((await signIn(a.email)).cookie).toContain("__Host-session=");
+    expect((await call(site(a.project.name), "GET", "/")).status).toBe(200);
+  });
+
+  test("an admin cannot be suspended, and nobody else reaches the moderation routes", async () => {
+    const admin = await setUp();
+    const me = await call(APP, "GET", "/api/admin/people?q=admin@school.test", { cookie: admin.cookie });
+    const reply = await call(APP, "POST", `/api/admin/people/${me.json.people[0].id}`, {
+      cookie: admin.cookie,
+      body: { suspend: true, reason: "test" },
+    });
+    expect(reply.status).toBe(409);
+    const a = await person("nosy");
+    expect((await call(APP, "GET", "/api/admin/people", { cookie: a.cookie })).status).toBe(404);
+    expect((await call(APP, "POST", `/api/admin/projects/${a.project.name}`, { cookie: a.cookie, body: { block: true, reason: "x" } })).status).toBe(404);
+  });
+
+  test("the version endpoint says which build is live", async () => {
+    const v = await call(APP, "GET", "/api/version");
+    expect(v.status).toBe(200);
+    expect(v.json.commit).toBe("dev");
   });
 
   test("removing an allow-list entry ends the sessions it covered", async () => {
