@@ -297,6 +297,13 @@ textarea:hover {
   padding: 0.1rem 0.3rem;
 }
 
+/* The logo is the word with a blue dot, as in name.maak.io. The dot is not read aloud. */
+.home::after {
+  content: ".";
+  content: "." / "";
+  color: var(--accent);
+}
+
 .address {
   border: 0;
   border-radius: var(--radius);

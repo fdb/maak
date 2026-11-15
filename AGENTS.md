@@ -26,6 +26,7 @@ One Cloudflare Worker, one D1 database, one R2 bucket. Student code is stored an
 - One grid of panels that share single lines; no panel has its own border. Box headers are a small label, not a bar. The three column headers share one height.
 - No button has an outline. A button is an icon and a word with a soft fill on hover; Share is the one filled button. An action that explains itself is an icon with a tooltip (new file, new folder, reload, more); one that does not carries its word (Upload, Open). Download ZIP is in the editor's More menu.
 - The editor bar is one line on a wide screen. On a phone it is two: maak, then the save status and the theme on the right; below, the address, then Share and More on the right (CSS `order` in `style.css`).
+- The logo is the word maak with a blue dot (`.home::after`), as in `name.maak.io`. The favicon `web/public/favicon.svg` is the m and the dot as paths, light and dark. The other variants are in `experiments/logo.html`.
 - Icons are Lucide (`lucide-preact`, ISC), imported by name so only the used ones ship.
 - Atkinson Hyperlegible Next for the interface, JetBrains Mono for code, both self-hosted from `@fontsource-variable` (OFL). The editor loads nothing from another party; a test checks this.
 - Colours are CSS variables in `web/src/style.css`, with a dark set under `:root[data-theme="dark"]`. The code editor reads the same variables, so a theme needs no editor code. Code ligatures are off on purpose.

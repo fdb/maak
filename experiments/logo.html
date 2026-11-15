@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="nl">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>maak logo sheet</title>
+<!-- Logo variants for maak, drawn in the app's own fonts and colours. Open from the repo root
+     after npm install; the fonts come from node_modules. -->
+<style>
+@font-face {
+  font-family: "Atkinson Hyperlegible Next Variable";
+  src: url("../node_modules/@fontsource-variable/atkinson-hyperlegible-next/files/atkinson-hyperlegible-next-latin-wght-normal.woff2") format("woff2");
+  font-weight: 200 800;
+}
+@font-face {
+  font-family: "JetBrains Mono Variable";
+  src: url("../node_modules/@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2") format("woff2");
+  font-weight: 100 800;
+}
+:root {
+  --ui: "Atkinson Hyperlegible Next Variable", system-ui, sans-serif;
+  --mono: "JetBrains Mono Variable", ui-monospace, monospace;
+  --page: oklch(96% 0.006 262);
+}
+.light {
+  --bg: oklch(99.2% 0.003 262);
+  --ink: oklch(24% 0.02 262);
+  --gray: oklch(48% 0.016 262);
+  --line: oklch(88.5% 0.008 262);
+  --accent: oklch(50% 0.19 262);
+  --on-accent: oklch(99% 0 0);
+}
+.dark {
+  --bg: oklch(19.5% 0.012 262);
+  --ink: oklch(93% 0.008 262);
+  --gray: oklch(70% 0.015 262);
+  --line: oklch(31% 0.014 262);
+  --accent: oklch(72% 0.14 262);
+  --on-accent: oklch(18% 0.03 262);
+}
+* { box-sizing: border-box; }
+body { margin: 0; padding: 24px; background: var(--page); font-family: var(--ui); color: oklch(24% 0.02 262); }
+h1 { font-size: 20px; margin: 0 0 4px; }
+.lead { margin: 0 0 20px; color: oklch(48% 0.016 262); font-size: 14px; }
+.grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+.card { background: white; border: 1px solid oklch(88.5% 0.008 262); border-radius: 10px; padding: 14px; }
+.card h2 { margin: 0 0 2px; font-size: 15px; }
+.card p { margin: 0 0 10px; font-size: 13px; color: oklch(48% 0.016 262); }
+.bar { display: flex; align-items: center; gap: 14px; height: 52px; padding: 0 16px; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; margin-bottom: 8px; }
+.bar .addr { font-size: 15px; font-weight: 600; }
+.bar .addr span { color: var(--gray); font-weight: 400; }
+.icons { display: flex; gap: 10px; align-items: center; }
+.icon { display: grid; place-items: center; border-radius: 22%; background: var(--bg); color: var(--ink); border: 1px solid var(--line); overflow: hidden; }
+.i64 { width: 64px; height: 64px; font-size: 40px; }
+.i32 { width: 32px; height: 32px; font-size: 20px; }
+.i16 { width: 16px; height: 16px; font-size: 10px; border-radius: 3px; }
+.big { font-size: 56px; padding: 6px 0 10px; color: oklch(24% 0.02 262); }
+
+/* The wordmarks. Each sets its own size in em, so one class works in the bar and large. */
+.w { font-family: var(--ui); font-weight: 750; letter-spacing: -0.02em; font-size: 20px; line-height: 1; white-space: nowrap; }
+.big .w { font-size: 56px; }
+.icon .w { font-size: inherit; }
+.i64 .win svg, .i32 .win svg, .i16 .win svg { width: 1em; height: 1em; }
+.dot::after { content: "."; color: var(--accent, oklch(50% 0.19 262)); }
+.caret::after { content: ""; display: inline-block; width: 0.09em; height: 0.82em; margin-left: 0.07em; vertical-align: -0.06em; background: var(--accent, oklch(50% 0.19 262)); border-radius: 0.04em; }
+.tag b { color: var(--accent, oklch(50% 0.19 262)); font-weight: 500; font-family: var(--mono); }
+.mono { font-family: var(--mono); font-weight: 750; letter-spacing: -0.03em; }
+.mono b { color: var(--accent, oklch(50% 0.19 262)); }
+.tile { display: inline-flex; align-items: center; gap: 0.32em; }
+.tile i { display: inline-grid; place-items: center; width: 1.2em; height: 1.2em; border-radius: 0.28em; background: var(--accent, oklch(50% 0.19 262)); color: var(--on-accent, white); font-style: normal; font-size: 1em; padding-bottom: 0.08em; }
+.aa em { font-style: normal; color: var(--accent, oklch(50% 0.19 262)); }
+.win { display: inline-flex; align-items: center; gap: 0.32em; }
+.win svg { width: 1.25em; height: 1.25em; }
+.light .icon .tile i, .dark .icon .tile i { width: 100%; height: 100%; border-radius: 0; }
+</style>
+<body>
+<h1>maak: logo</h1>
+<p class="lead">Acht varianten in de lettertypes en kleuren van de app. Per variant: groot, de balk licht en donker, en het pictogram op 64, 32 en 16 pixels.</p>
+<div class="grid" id="grid"></div>
+
+<template id="window">
+  <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="1.5" y="2.5" width="17" height="15" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M1.5 7h17" stroke="currentColor" stroke-width="2"/><circle cx="4.6" cy="4.8" r="0.9" fill="var(--accent, oklch(50% 0.19 262))"/><path d="M6.5 11l-2 2 2 2M13.5 11l2 2-2 2" fill="none" stroke="var(--accent, oklch(50% 0.19 262))" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+</template>
+
+<script>
+const win = document.getElementById("window").innerHTML;
+const variants = [
+  { id: "A", name: "Zoals nu", note: "Het woord, vet. Rustig; zegt niets over wat de app doet.",
+    mark: `<span class="w">maak</span>`, icon: `<span class="w">m</span>` },
+  { id: "B", name: "Punt", note: "Een blauwe punt, zoals in naam.maak.io. De punt is ook het pictogram.",
+    mark: `<span class="w dot">maak</span>`, icon: `<span class="w dot">m</span>` },
+  { id: "C", name: "Cursor", note: "Een tekstcursor achter het woord: hier typ je.",
+    mark: `<span class="w caret">maak</span>`, icon: `<span class="w caret">m</span>` },
+  { id: "D", name: "Tag", note: "Het woord tussen HTML-haken. Duidelijk over code, iets drukker.",
+    mark: `<span class="w tag"><b>&lt;</b>maak<b>&gt;</b></span>`, icon: `<span class="w tag" style="font-size:.8em"><b>&lt;</b>m<b>&gt;</b></span>` },
+  { id: "E", name: "Mono", note: "In het lettertype van de code, met een liggende cursor.",
+    mark: `<span class="w mono">maak<b>_</b></span>`, icon: `<span class="w mono">m<b>_</b></span>` },
+  { id: "F", name: "Tegel", note: "Een blauwe tegel met m, naast het woord. Het sterkste pictogram.",
+    mark: `<span class="w tile"><i>m</i>maak</span>`, icon: `<span class="w tile"><i>m</i></span>`, fill: true },
+  { id: "G", name: "Venster", note: "Een browservenster met haken: een website die je maakt.",
+    mark: `<span class="w win">${win}maak</span>`, icon: `<span class="w win">${win}</span>` },
+  { id: "H", name: "Dubbele a", note: "De aa in blauw: het Nederlandse woord, het eigen kenmerk.",
+    mark: `<span class="w aa">m<em>aa</em>k</span>`, icon: `<span class="w aa"><em>aa</em></span>` },
+];
+const bar = (v, theme) => `<div class="bar ${theme}">${v.mark}<span class="addr">nieuwe-boot<span>.maak.io</span></span></div>`;
+const icon = (v, theme, size) =>
+  `<div class="icon ${theme} i${size}" style="${v.fill ? "padding:0;border:0" : ""}">${v.fill ? `<span class="w tile" style="width:100%;height:100%;display:flex"><i style="width:100%;height:100%;border-radius:0">m</i></span>` : v.icon}</div>`;
+document.getElementById("grid").innerHTML = variants.map((v) => `
+  <section class="card">
+    <h2>${v.id}. ${v.name}</h2>
+    <p>${v.note}</p>
+    <div class="big light" style="background:none">${v.mark}</div>
+    ${bar(v, "light")}
+    ${bar(v, "dark")}
+    <div class="icons">
+      ${[64, 32, 16].map((s) => icon(v, "light", s)).join("")}
+      ${[64, 32, 16].map((s) => icon(v, "dark", s)).join("")}
+    </div>
+  </section>`).join("");
+</script>
+</body>
+</html>

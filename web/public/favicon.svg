@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <style>
+    .m { stroke: oklch(24% 0.02 262); }
+    .dot { fill: oklch(50% 0.19 262); }
+    @media (prefers-color-scheme: dark) {
+      .m { stroke: oklch(93% 0.008 262); }
+      .dot { fill: oklch(72% 0.14 262); }
+    }
+  </style>
+  <path class="m" d="M4 25V14.5a4.5 4.5 0 0 1 9 0V25M13 14.5a4.5 4.5 0 0 1 9 0V25" fill="none" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle class="dot" cx="27.5" cy="23.2" r="2.7"/>
+</svg>
