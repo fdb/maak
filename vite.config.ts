@@ -25,5 +25,8 @@ export default defineConfig({
     outDir: "../dist",
     emptyOutDir: true,
     sourcemap: true,
+    // The cm chunk (CodeMirror, its languages and Emmet) is about 610 kB and the editor needs all of
+    // it. It loads only with the editor and the front-page demo. The limit warns if it grows.
+    chunkSizeWarningLimit: 650,
   },
 });

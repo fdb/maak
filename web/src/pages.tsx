@@ -4,11 +4,9 @@ import { Download, FileCode, FileImage, FolderOpen, Globe, History, Palette } fr
 import type { ComponentChildren } from "preact";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { ApiError, type Me, type ProjectInfo, api } from "./api";
-import { EditorView, makeState } from "./cm";
 import { type Lang, errorText, getLang, t, when } from "./i18n";
 import { ThemeToggle } from "./look";
-import { A, CopyButton, Menu, go } from "./ui";
-import { downloadAll } from "./zip";
+import { A, CopyButton, Menu, go, loadPart } from "./ui";
 
 function Footer() {
   return (
@@ -59,11 +57,20 @@ function DemoBox(props: { path: string; text: string; onChange: (text: string) =
   const change = useRef(props.onChange);
   change.current = props.onChange;
   useEffect(() => {
-    const view = new EditorView({
-      parent: host.current!,
-      state: makeState(props.path, props.text, false, props.path, (text) => change.current(text)),
+    // CodeMirror is most of the editor's script, so the front page fetches it after it shows.
+    let view: { destroy(): void } | null = null;
+    let gone = false;
+    void loadPart(() => import("./cm")).then(({ EditorView, makeState }) => {
+      if (gone) return;
+      view = new EditorView({
+        parent: host.current!,
+        state: makeState(props.path, props.text, false, props.path, (text) => change.current(text)),
+      });
     });
-    return () => view.destroy();
+    return () => {
+      gone = true;
+      view?.destroy();
+    };
   }, []);
   return <div class="demo-code" ref={host} />;
 }
@@ -232,7 +239,7 @@ export function Account(props: { me: Me } & LangProps) {
       <h2>{t("account.downloadAll")}</h2>
       <p class="dim">{t("account.downloadText")}</p>
       <p>
-        <button type="button" class="button" onClick={() => void downloadAll().catch((e) => setError(codeOf(e)))}>
+        <button type="button" class="button" onClick={() => void loadPart(() => import("./zip")).then((zip) => zip.downloadAll()).catch((e) => setError(codeOf(e)))}>
           <Download size={16} />
           {t("account.downloadAll")}
         </button>

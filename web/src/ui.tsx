@@ -3,6 +3,25 @@
 import type { ComponentChildren, JSX } from "preact";
 import { useEffect, useLayoutEffect, useReducer, useRef, useState } from "preact/hooks";
 
+/**
+ * Loads a part of the editor that is split off from the first page. A deploy replaces every file,
+ * so a tab opened before it asks for a part that is gone; one reload then gets the new parts.
+ */
+export function loadPart<T>(load: () => Promise<T>): Promise<T> {
+  return load().catch((error) => {
+    let last = 0;
+    try {
+      last = Number(sessionStorage.getItem("maak:reloaded") ?? 0);
+      sessionStorage.setItem("maak:reloaded", String(Date.now()));
+    } catch {
+      // Without storage there is no guard against a loop, so do not reload.
+      throw error;
+    }
+    if (Date.now() - last > 60_000) location.reload();
+    throw error;
+  });
+}
+
 export function go(path: string, replace = false): void {
   if (replace) history.replaceState(null, "", path);
   else history.pushState(null, "", path);

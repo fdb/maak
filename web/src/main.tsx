@@ -1,18 +1,28 @@
 import { render } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { type Me, api } from "./api";
-import { EditorPage } from "./editor";
 import { type Lang, setLang, t } from "./i18n";
 import { initTheme } from "./look";
 import { Account, Admin, CopyPage, Front, Projects, Report, TextPage } from "./pages";
 import "@fontsource-variable/atkinson-hyperlegible-next";
 import "@fontsource-variable/jetbrains-mono";
 import "./style.css";
-import { A } from "./ui";
+import { A, loadPart } from "./ui";
 
 function pickLang(me: Me): Lang {
   const own = me.user?.lang ?? localStorage.getItem("maak:lang") ?? navigator.language;
   return own.toLowerCase().startsWith("nl") ? "nl" : "en";
+}
+
+type EditorProps = { me: Me; name: string; readOnly: boolean };
+
+/** The editor and CodeMirror load only when a project is opened. */
+function EditorPage(props: EditorProps) {
+  const [part, setPart] = useState<typeof import("./editor") | null>(null);
+  useEffect(() => {
+    void loadPart(() => import("./editor")).then(setPart);
+  }, []);
+  return part ? <part.EditorPage {...props} /> : <p class="center">{t("app.loading")}</p>;
 }
 
 function App() {
