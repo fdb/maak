@@ -19,7 +19,7 @@ import {
   Trash2,
   Upload,
 } from "lucide-preact";
-import { Fragment } from "preact";
+import { Fragment, type JSX } from "preact";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import { LIMITS, boxOf, isImage, pathHint } from "../../src/shared/rules";
 import { type FileRow, type Me, type ProjectInfo, api } from "./api";
@@ -32,7 +32,7 @@ import { EditorStore, baseOf, parentOf } from "./store";
 import { A, CopyButton, Menu, Popover, go, useStore } from "./ui";
 import { downloadProject } from "./zip";
 
-export function EditorPage(props: { me: Me; name: string; readOnly: boolean }) {
+export function EditorPage(props: { me: Me; name: string; readOnly: boolean; missing?: JSX.Element }) {
   const [store, setStore] = useState<EditorStore | null>(null);
   const [missing, setMissing] = useState(false);
 
@@ -64,6 +64,7 @@ export function EditorPage(props: { me: Me; name: string; readOnly: boolean }) {
   }, [props.name, props.readOnly]);
 
   if (missing) {
+    if (props.missing) return props.missing;
     return (
       <main class="page">
         <p>{t("copy.missing")}</p>

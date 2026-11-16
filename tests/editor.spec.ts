@@ -206,6 +206,30 @@ test("the code view is read-only, and the copy link gives a second account an in
   await context.close();
 });
 
+test("signed out, the editor address of a shared project opens its code view; a private one asks to sign in", async ({ page, browser }) => {
+  const { name } = await signInPage(page, "signedout");
+  await setBox(page, 0, "<!doctype html><h1>Gedeeld</h1>");
+  await saved(page);
+
+  const context = await browser.newContext({ locale: "nl-BE" });
+  const visitor = await context.newPage();
+  // Not shared: the same front page as for a name that does not exist, and signing in comes back here.
+  await visitor.goto(`/e/${name}`);
+  const signIn = visitor.getByRole("link", { name: "Aanmelden" });
+  await expect(signIn).toHaveAttribute("href", `/auth/login?next=${encodeURIComponent(`/e/${name}`)}`);
+  await expect(visitor).toHaveURL(new RegExp(`/e/${name}$`));
+
+  await page.getByRole("button", { name: "Delen" }).click();
+  await page.getByRole("switch", { name: "Iedereen met de link kan kijken" }).check();
+  await expect(page.locator(".share input[readonly]")).toBeVisible();
+
+  await visitor.goto(`/e/${name}`);
+  await expect(visitor).toHaveURL(new RegExp(`/p/${name}$`));
+  await expect(boxText(visitor, 0)).toContainText("Gedeeld");
+  await expect(boxText(visitor, 0)).toHaveAttribute("aria-readonly", "true");
+  await context.close();
+});
+
 test("network off mid-edit, typing continues, network on: nothing is lost", async ({ page, context }) => {
   const { name } = await signInPage(page, "offline");
   const cookie = await sessionCookie(context);
