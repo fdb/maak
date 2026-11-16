@@ -171,6 +171,18 @@ test.describe("serving", () => {
     expect((await call("a.b.localhost:8787", "GET", "/")).status).toBe(404);
     expect((await call("www.localhost:8787", "GET", "/x")).status).toBe(301);
   });
+
+  test("the site's own 404 page is set in Atkinson, loaded from the editor's host", async () => {
+    const page = await call(site("nobody-here"), "GET", "/");
+    const font = /url\("([^"]+\.woff2)"\)/.exec(page.text)?.[1];
+    expect(font).toBe(`${ORIGIN}/fonts/atkinson-hyperlegible-next.woff2`);
+    expect(page.text).toContain('font-family: "Atkinson Hyperlegible Next"');
+    // A font from another origin loads only with CORS.
+    const file = await call(APP, "GET", "/fonts/atkinson-hyperlegible-next.woff2");
+    expect(file.status).toBe(200);
+    expect(file.headers["content-type"]).toBe("font/woff2");
+    expect(file.headers["access-control-allow-origin"]).toBe("*");
+  });
 });
 
 test.describe("saving", () => {

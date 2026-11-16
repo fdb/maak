@@ -580,6 +580,15 @@ app.post("/api/admin/people/:id", async (c) => {
 app.all("/api/*", (c) => fail(c, 404, "not-found"));
 app.all("/auth/*", (c) => fail(c, 404, "not-found"));
 
+// The interface font at a fixed path, for the 404 page of a student site, which is another origin.
+app.get("/fonts/atkinson-hyperlegible-next.woff2", async (c) => {
+  const file = await c.env.ASSETS.fetch(c.req.raw);
+  if (!file.ok) return fail(c, 404, "not-found");
+  return new Response(file.body, {
+    headers: { "Content-Type": "font/woff2", "Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=86400" },
+  });
+});
+
 // Everything else is the editor app. Unknown paths get index.html, and the app routes on the path.
 app.get("*", (c) => c.env.ASSETS.fetch(c.req.raw));
 

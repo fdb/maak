@@ -1,12 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="42 -789 1080 1080">
+  <!-- The m and the period of Atkinson Hyperlegible Next at weight 750, in font units (1000 per em),
+       set as in the wordmark: the period one advance (890) later, minus the -0.02em spacing. -->
   <style>
-    .m { stroke: oklch(24% 0.02 262); }
+    .m { fill: oklch(24% 0.02 262); }
     .dot { fill: oklch(50% 0.19 262); }
     @media (prefers-color-scheme: dark) {
-      .m { stroke: oklch(93% 0.008 262); }
+      .m { fill: oklch(93% 0.008 262); }
       .dot { fill: oklch(72% 0.14 262); }
     }
   </style>
-  <path class="m" d="M4 25V14.5a4.5 4.5 0 0 1 9 0V25M13 14.5a4.5 4.5 0 0 1 9 0V25" fill="none" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle class="dot" cx="27.5" cy="23.2" r="2.7"/>
+  <g transform="scale(1 -1)">
+    <path class="m" d="M53 0V496H186L205 430Q216 449 237 467Q258 485 288 497.5Q318 510 355 510Q414 510 449.5 489Q485 468 502 427Q531 468 575.5 489Q620 510 672 510Q736 510 772 486Q808 462 823.5 415.5Q839 369 839 302V0H687V264Q687 299 683 328Q679 357 663 374.5Q647 392 610 392Q564 392 543 359.5Q522 327 522 262V0H369V264Q369 299 365.5 328Q362 357 346.5 374.5Q331 392 295 392Q264 392 244 376.5Q224 361 214.5 331.5Q205 302 205 259V0Z"/>
+    <path class="dot" transform="translate(870 0)" d="M143.5 -12Q103 -12 74 17Q45 46 45 86.5Q45 127 74 155.5Q103 184 143.5 184Q184 184 212.5 155.5Q241 127 241 86.5Q241 46 212.5 17Q184 -12 143.5 -12Z"/>
+  </g>
 </svg>

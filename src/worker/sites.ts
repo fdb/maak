@@ -37,7 +37,11 @@ function plain404(env: Env, url: URL, path: string): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>404</title>
-<body style="font: 16px/1.5 system-ui, sans-serif; margin: 3rem">
+<style>
+@font-face { font-family: "Atkinson Hyperlegible Next"; font-weight: 200 800; font-display: swap; src: url("${url.protocol}//${env.APP_HOST}/fonts/atkinson-hyperlegible-next.woff2") format("woff2"); }
+body { font: 16px/1.5 "Atkinson Hyperlegible Next", system-ui, sans-serif; margin: 3rem; }
+</style>
+<body>
 <h1 style="font-size: 1.25rem">404</h1>
 <p>Er is geen bestand op <code>${escapeHtml(path)}</code>.<br>There is no file at <code>${escapeHtml(path)}</code>.</p>
 <p style="color: #666; font-size: 0.875rem">maak.io · <a href="${report}" style="color: inherit">Meld een probleem / Report a problem</a></p>
