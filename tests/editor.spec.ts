@@ -1100,7 +1100,7 @@ test("each project in the list shows its page as a small picture that runs no sc
   await expect(page).toHaveURL(new RegExp(`/e/${name}$`));
 });
 
-test("a double-click on a word in the code selects that word", async ({ page }) => {
+test("a double-click on a word in the code selects that word, and the selection shows", async ({ page }) => {
   await signInPage(page, "dblclick");
   const box = page.locator(".box").nth(0);
   await expect(box.locator(".cm-content")).toContainText("Welkom op mijn website");
@@ -1119,6 +1119,20 @@ test("a double-click on a word in the code selects that word", async ({ page }) 
     }
     throw new Error("no Welkom");
   });
-  await page.mouse.dblclick(at.x, at.y);
-  await expect.poll(() => page.evaluate(() => getSelection()?.toString())).toBe("Welkom");
+  // A person's double-click: two presses some time apart, then a moment before looking.
+  await page.mouse.move(at.x, at.y);
+  await page.mouse.down({ clickCount: 1 });
+  await page.mouse.up({ clickCount: 1 });
+  await page.waitForTimeout(150);
+  await page.mouse.down({ clickCount: 2 });
+  await page.mouse.up({ clickCount: 2 });
+  await page.waitForTimeout(1000);
+  expect(await page.evaluate(() => getSelection()?.toString())).toBe("Welkom");
+  // The selection is drawn on a layer behind the text, so the active line, which holds the word,
+  // must let it through: an opaque line background hides the selected word while the editor has focus.
+  await expect(box.locator(".cm-selectionBackground")).toHaveCount(1);
+  const line = await box.locator(".cm-activeLine").evaluate((el) => getComputedStyle(el).backgroundColor);
+  const alpha = /\/\s*([\d.]+%?)\)$|rgba\([^)]*,\s*([\d.]+)\)$/.exec(line);
+  expect(alpha, `active line ${line} is opaque`).not.toBeNull();
+  expect(parseFloat(alpha![1] ?? alpha![2]) / (alpha![1]?.endsWith("%") ? 100 : 1)).toBeLessThan(0.5);
 });
