@@ -53,6 +53,13 @@ One Cloudflare Worker, one D1 database, one R2 bucket. Student code is stored an
 
 - Every upload starts in `store.offer`. Images over 1920 px on the longest side or over 1 MB open a dialog with four sizes and "keep the original". The resize runs in the browser (`web/src/resize.ts`), and only the resized file is sent, so the bucket never holds the large one. One answer covers the whole batch.
 
+## Limits
+
+- Sign-up is meant to be open, and students use their own Gmail, so one set of limits holds for everyone (`LIMITS` in `src/shared/rules.ts`): 5 MB per file, 25 MB and 150 files per project, 20 projects (the trash frees a place), paths eight segments deep, 100 MB of storage per person.
+- Storage counts what R2 holds: every object of the person's projects, history (30 days) and trash included. `blobs` has a row per R2 object and `users.held_bytes` the sum; a save adds to it and the weekly cleanup counts it again from `blobs`. Deleting a file frees nothing until its snapshots expire.
+- A shared site refuses a file to a page on another site (`Sec-Fetch-Site`, and the `Referer` between student sites), but serves a link that opens it, a frame that holds a page, and requests without fetch metadata. The private alias is exempt: the project list frames it with an empty sandbox, whose requests count as cross-site. A hotlink still costs one Worker request; it no longer costs a stream of range requests.
+- `CEILING` in `src/worker/projects.ts` caps the whole site per UTC day: 2 GB of uploads and 200 new accounts. Past it uploads get `ceiling`, new accounts `/?refused=busy`, and the admins get one mail. The counters use `user_id = '*'`.
+
 ## Layout
 
 - `src/worker/index.ts` routes by host name: `APP_HOST` is the editor and API, `<name>.<SITE_SUFFIX>` a shared site, `<name>--<secret>.<SITE_SUFFIX>` the preview alias.

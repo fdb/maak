@@ -1,6 +1,7 @@
 // HTTP helpers for the API tests. Requests go to 127.0.0.1 with an explicit Host header,
 // because Node does not resolve <name>.localhost the way browsers do.
 
+import { spawnSync } from "node:child_process";
 import { request } from "node:http";
 
 export const APP = "localhost:8787";
@@ -114,4 +115,17 @@ export async function person(tag: string) {
   const made = await call(APP, "POST", "/api/projects", { cookie });
   if (made.status !== 200) throw new Error(`could not create a project: ${made.status} ${made.text}`);
   return { email, cookie, project: made.json.project as { id: string; name: string; secret: string } };
+}
+
+/**
+ * Runs SQL on the test database, next to the running Worker. For states that take too long to
+ * reach through the API, such as a full quota or a busy day.
+ */
+export function sql(command: string): void {
+  const run = spawnSync(
+    "node_modules/.bin/wrangler",
+    ["d1", "execute", "maak", "--local", "--persist-to", ".wrangler/test", "--command", command],
+    { encoding: "utf8", env: { ...process.env, CI: "1" } },
+  );
+  if (run.status !== 0) throw new Error(`sql failed: ${run.stderr || run.stdout}`);
 }

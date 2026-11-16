@@ -1,8 +1,8 @@
 // Sign-in with OpenID Connect: authorization code flow with PKCE, state and nonce.
 // maak.io stores no passwords. The session is a random value in a __Host- cookie.
 
-import { DAY, type Env, type User, randomHex, sha256 } from "./env";
-import { createProject } from "./projects";
+import { DAY, type Env, type User, adminEmails, randomHex, sha256 } from "./env";
+import { createProject, underCeiling } from "./projects";
 
 const SESSION_COOKIE = "__Host-session";
 const FLOW_COOKIE = "__Host-flow";
@@ -115,11 +115,6 @@ async function verifyIdToken(token: string, doc: Discovery, env: Env, nonce: str
   return claims;
 }
 
-export function adminEmails(env: Env): string[] {
-  return (env.ADMIN_EMAILS ?? "").split(",")
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean);
-}
 
 async function mayEnter(env: Env, email: string, invite: string): Promise<boolean> {
   if (adminEmails(env).includes(email)) return true;
@@ -232,6 +227,7 @@ export async function callback(req: Request, env: Env): Promise<Response> {
       .bind(email, isAdmin, now, user.id)
       .run();
   } else {
+    if (!isAdmin && !(await underCeiling(env, "signup"))) return refused("busy");
     user = { id: `u_${randomHex(8)}`, suspended_at: null };
     const lang = (req.headers.get("Accept-Language") ?? "").toLowerCase().startsWith("en") ? "en" : "nl";
     await env.DB.prepare(
@@ -266,7 +262,7 @@ export async function currentUser(req: Request, env: Env): Promise<User | null> 
   if (!token || !/^[0-9a-f]{64}$/.test(token)) return null;
   const now = Date.now();
   const user = await env.DB.prepare(
-    "SELECT u.id, u.email, u.name, u.lang, u.is_admin, u.seen_at FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ? AND s.expires_at > ? AND u.suspended_at IS NULL",
+    "SELECT u.id, u.email, u.name, u.lang, u.is_admin, u.seen_at, u.held_bytes FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ? AND s.expires_at > ? AND u.suspended_at IS NULL",
   )
     .bind(await sha256(token), now)
     .first<User>();

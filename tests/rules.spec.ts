@@ -29,6 +29,8 @@ test("paths refuse traversal, backslashes, hidden files and control characters",
   expect(pathError("/a.txt")).toBe("slash");
   expect(pathError("a\u0000.txt")).toBe("control");
   expect(pathError("")).toBe("empty");
+  expect(pathError("a/b/c/d/e/f/g/page.html")).toBeNull();
+  expect(pathError("a/b/c/d/e/f/g/h/page.html")).toBe("deep");
 });
 
 test("spaces and capitals get a hint, plain names do not", () => {

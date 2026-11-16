@@ -162,7 +162,9 @@ export function Front(props: { me: Me; next: string } & LangProps) {
                   ? "front.refused.email"
                   : refused === "suspended"
                     ? "front.refused.suspended"
-                    : "front.refused.other",
+                    : refused === "busy"
+                      ? "front.refused.busy"
+                      : "front.refused.other",
             )}{" "}
             {t("front.contact", { contact: props.me.contact })}
           </p>

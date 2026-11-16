@@ -28,6 +28,8 @@ export interface User {
   lang: string;
   is_admin: number;
   seen_at: number;
+  /** Bytes the person's projects hold in R2, history and trash included. */
+  held_bytes: number;
 }
 
 export interface Project {
@@ -55,6 +57,23 @@ export interface FileRow {
 }
 
 export const DAY = 24 * 60 * 60 * 1000;
+
+export function adminEmails(env: Env): string[] {
+  return (env.ADMIN_EMAILS ?? "").split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+/** Sends a note to the admins. A failed send is logged; the caller has stored what matters. */
+export async function mailAdmins(env: Env, subject: string, text: string): Promise<void> {
+  const to = adminEmails(env);
+  if (!env.MAIL || !env.MAIL_FROM || to.length === 0) return;
+  try {
+    await env.MAIL.send({ from: { email: env.MAIL_FROM, name: "maak.io" }, to, subject, text });
+  } catch (e) {
+    console.error("mail", subject, (e as { code?: string }).code ?? "", (e as Error).message);
+  }
+}
 
 export function hex(bytes: ArrayBuffer | Uint8Array): string {
   const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);

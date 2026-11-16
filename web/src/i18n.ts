@@ -217,6 +217,7 @@ const nl = {
   "list.blocked": "Een beheerder heeft delen uitgezet: {reason}",
   "share.blocked": "Een beheerder heeft delen voor dit project uitgezet. Reden: {reason}",
   "front.refused.suspended": "Je account is geschorst.",
+  "front.refused.busy": "maak.io neemt vandaag geen nieuwe accounts meer aan. Probeer het morgen opnieuw.",
   "err.blocked": "Een beheerder heeft delen voor dit project uitgezet.",
   "err.reason": "Geef een reden.",
   "err.admin": "Een beheerder kan niet geschorst worden.",
@@ -233,15 +234,18 @@ const nl = {
   "err.title": "Dat ging niet",
   "err.close": "Sluiten",
   "err.type": "Dit bestandstype kan niet op maak.io. Toegelaten: webpagina's, stijlen, scripts, afbeeldingen, lettertypes, audio, video, PDF en 3D-modellen.",
-  "err.file-too-large": "Dit bestand is groter dan 10 MB.",
-  "err.project-too-large": "Dit project zou groter worden dan 100 MB.",
-  "err.too-many-files": "Een project kan 500 bestanden bevatten.",
-  "err.too-many-projects": "Je kunt 50 projecten hebben. Verwijder er eerst een.",
+  "err.file-too-large": "Dit bestand is groter dan 5 MB.",
+  "err.project-too-large": "Dit project zou groter worden dan 25 MB.",
+  "err.storage-full": "Je opslag is vol: 100 MB voor al je projecten samen, met de geschiedenis van de laatste 30 dagen en de prullenbak.",
+  "err.ceiling": "maak.io neemt vandaag geen uploads meer aan. Probeer het morgen opnieuw.",
+  "err.too-many-files": "Een project kan 150 bestanden bevatten.",
+  "err.too-many-projects": "Je kunt 20 projecten hebben. Verwijder er eerst een.",
   "err.too-large-to-edit": "Dit bestand is te groot om hier te bewerken (meer dan 1 MB).",
   "err.exists": "Er bestaat al iets met deze naam.",
   "err.parent-is-file": "Een bestand kan geen map zijn.",
   "err.into-itself": "Een map kan niet in zichzelf.",
   "err.path": "Deze naam kan niet. Gebruik geen .., geen \\ en geen punt vooraan.",
+  "err.path-deep": "Mappen gaan hoogstens acht niveaus diep.",
   "err.name-length": "Een naam heeft 3 tot 40 tekens.",
   "err.name-chars": "Gebruik kleine letters, cijfers en koppeltekens, zonder koppelteken vooraan of achteraan.",
   "err.name-reserved": "Deze naam is gereserveerd.",
@@ -470,6 +474,7 @@ const en: Record<keyof typeof nl, string> = {
   "list.blocked": "An administrator switched off sharing: {reason}",
   "share.blocked": "An administrator switched off sharing for this project. Reason: {reason}",
   "front.refused.suspended": "Your account is suspended.",
+  "front.refused.busy": "maak.io takes no new accounts today. Try again tomorrow.",
   "err.blocked": "An administrator switched off sharing for this project.",
   "err.reason": "Give a reason.",
   "err.admin": "An administrator cannot be suspended.",
@@ -486,15 +491,18 @@ const en: Record<keyof typeof nl, string> = {
   "err.title": "That did not work",
   "err.close": "Close",
   "err.type": "This file type cannot go on maak.io. Allowed: web pages, styles, scripts, images, fonts, audio, video, PDF and 3D models.",
-  "err.file-too-large": "This file is larger than 10 MB.",
-  "err.project-too-large": "This project would grow beyond 100 MB.",
-  "err.too-many-files": "A project can hold 500 files.",
-  "err.too-many-projects": "You can have 50 projects. Delete one first.",
+  "err.file-too-large": "This file is larger than 5 MB.",
+  "err.project-too-large": "This project would grow beyond 25 MB.",
+  "err.storage-full": "Your storage is full: 100 MB for all your projects together, including the history of the last 30 days and the trash.",
+  "err.ceiling": "maak.io takes no more uploads today. Try again tomorrow.",
+  "err.too-many-files": "A project can hold 150 files.",
+  "err.too-many-projects": "You can have 20 projects. Delete one first.",
   "err.too-large-to-edit": "This file is too large to edit here (over 1 MB).",
   "err.exists": "Something with this name already exists.",
   "err.parent-is-file": "A file cannot be a folder.",
   "err.into-itself": "A folder cannot go into itself.",
   "err.path": "This name does not work. Use no .., no \\ and no leading dot.",
+  "err.path-deep": "Folders go at most eight levels deep.",
   "err.name-length": "A name has 3 to 40 characters.",
   "err.name-chars": "Use lowercase letters, digits and hyphens, with no hyphen at either end.",
   "err.name-reserved": "This name is reserved.",
@@ -527,8 +535,9 @@ export function t(key: Key, vars: Record<string, string | number> = {}): string 
 
 /** The message for an error code from the server. */
 export function errorText(code: string): string {
-  const key = `err.${code.startsWith("path-") ? "path" : code}`;
-  return key in nl ? t(key as Key) : t("err.server");
+  const key = `err.${code}`;
+  if (key in nl) return t(key as Key);
+  return code.startsWith("path-") ? t("err.path") : t("err.server");
 }
 
 export function when(ms: number): string {

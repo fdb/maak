@@ -66,6 +66,27 @@ function parseRange(header: string | null, size: number): { offset: number; leng
   return { offset: start, length: end - start + 1 };
 }
 
+/**
+ * Whether a page on another site asks for this file: an <img>, <video>, fetch or frame there.
+ * Browsers say so in Sec-Fetch-Site. Every student site is same-site with the others, so between
+ * them the Referer decides. A link that opens the file, a frame that holds a page, and a request
+ * without these headers (curl, a link preview, an old browser) are served.
+ */
+function embeddedElsewhere(req: Request, url: URL, html: boolean): boolean {
+  const dest = req.headers.get("Sec-Fetch-Dest");
+  if (dest === "document" || (html && (dest === "iframe" || dest === "frame"))) return false;
+  const site = req.headers.get("Sec-Fetch-Site");
+  if (site === "cross-site") return true;
+  if (site !== "same-site") return false;
+  const referer = req.headers.get("Referer");
+  if (!referer) return false;
+  try {
+    return new URL(referer).host !== url.host;
+  } catch {
+    return true;
+  }
+}
+
 export async function serveSite(req: Request, env: Env, label: string): Promise<Response> {
   const url = new URL(req.url);
   const db = env.DB;
@@ -143,6 +164,12 @@ export async function serveSite(req: Request, env: Env, label: string): Promise<
 
   const type = contentType(path) ?? "application/octet-stream";
   const html = type.startsWith("text/html");
+  // Hotlinks cost a request each, and a video on a busy page elsewhere makes many. The alias is
+  // left out: the project list draws it in a sandboxed frame, whose requests count as cross-site.
+  if (!alias && embeddedElsewhere(req, url, html)) {
+    headers.set("Content-Type", "text/plain; charset=utf-8");
+    return new Response("This file can be used on its own site only.\n", { status: 403, headers });
+  }
   const withHelper = alias && html;
   const etag = `"${entry.hash}${withHelper ? "-h" : ""}"`;
   headers.set("Content-Type", type);

@@ -2,11 +2,16 @@
 
 const MB = 1024 * 1024;
 
+// Sign-up is open to anyone with a Google account, so these hold for everyone.
 export const LIMITS = {
-  file: 10 * MB,
-  project: 100 * MB,
-  files: 500,
-  projects: 50,
+  file: 5 * MB,
+  project: 25 * MB,
+  files: 150,
+  projects: 20,
+  /** Everything a person's projects hold in storage: files, history and the trash. */
+  person: 100 * MB,
+  /** Segments of a path, the file name included. */
+  depth: 8,
   text: 1 * MB,
   sizeHint: 500_000,
 };
@@ -28,7 +33,7 @@ export function nameError(name: string): NameError | null {
   return null;
 }
 
-export type PathError = "empty" | "long" | "dots" | "backslash" | "leading-dot" | "control" | "slash";
+export type PathError = "empty" | "long" | "deep" | "dots" | "backslash" | "leading-dot" | "control" | "slash";
 
 export function pathError(path: string): PathError | null {
   if (!path) return "empty";
@@ -36,11 +41,13 @@ export function pathError(path: string): PathError | null {
   if (path.includes("\\")) return "backslash";
   // eslint-disable-next-line no-control-regex
   if (/[\u0000-\u001f\u007f]/.test(path)) return "control";
-  for (const part of path.split("/")) {
+  const parts = path.split("/");
+  for (const part of parts) {
     if (!part) return "slash";
     if (part.includes("..")) return "dots";
     if (part.startsWith(".")) return "leading-dot";
   }
+  if (parts.length > LIMITS.depth) return "deep";
   return null;
 }
 

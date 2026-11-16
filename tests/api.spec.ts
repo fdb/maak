@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { APP, ORIGIN, call, filesUrl, person, setUp, signIn, site } from "./lib";
+import { APP, ORIGIN, call, filesUrl, person, setUp, signIn, site, sql } from "./lib";
 
 const put = (cookie: string, project: string, path: string, body: string | Buffer, rev?: number) =>
   call(APP, "PUT", filesUrl(project, path), {
@@ -154,6 +154,38 @@ test.describe("serving", () => {
     expect(part.headers["content-range"]).toBe("bytes 2-5/10");
   });
 
+  test("another site cannot embed a shared file, but a link to it opens", async () => {
+    const a = await person("hotlink");
+    await put(a.cookie, a.project.id, "cat.jpg", Buffer.from("jpg"));
+    await put(a.cookie, a.project.id, "clip.mp4", Buffer.from("mp4"));
+    await call(APP, "PATCH", `/api/projects/${a.project.id}`, { cookie: a.cookie, body: { shared: true } });
+    const get = (host: string, path: string, headers: Record<string, string> = {}) =>
+      call(host, "GET", path, { headers }).then((r) => r.status);
+    const own = site(a.project.name);
+    const from = (fetchSite: string, dest: string, referer?: string) => ({
+      "Sec-Fetch-Site": fetchSite,
+      "Sec-Fetch-Dest": dest,
+      ...(referer ? { Referer: referer } : {}),
+    });
+
+    // The site's own page loads its files.
+    expect(await get(own, "/cat.jpg", from("same-origin", "image", `http://${own}/`))).toBe(200);
+    // An <img> or <video> on another site gets nothing.
+    expect(await get(own, "/cat.jpg", from("cross-site", "image", "https://example.com/"))).toBe(403);
+    expect(await get(own, "/clip.mp4", from("cross-site", "video"))).toBe(403);
+    // Another student's site shares the domain, so the Referer tells them apart.
+    expect(await get(own, "/cat.jpg", from("same-site", "image", "http://other-site.localhost:8787/"))).toBe(403);
+    // A link from elsewhere opens the file, and another site may frame a page but not a file.
+    expect(await get(own, "/clip.mp4", from("cross-site", "document"))).toBe(200);
+    expect(await get(own, "/", from("cross-site", "iframe"))).toBe(200);
+    expect(await get(own, "/cat.jpg", from("cross-site", "iframe"))).toBe(403);
+    // Without fetch metadata (curl, a link preview) the file is served.
+    expect(await get(own, "/cat.jpg")).toBe(200);
+    // The private alias is left alone: the project list draws it in a sandboxed frame,
+    // whose requests count as cross-site.
+    expect(await get(site(`${a.project.name}--${a.project.secret}`), "/cat.jpg", from("cross-site", "image"))).toBe(200);
+  });
+
   test("the editor's own pages send a strict policy, and student files there are downloads", async () => {
     const a = await person("csp");
     const page = await call(APP, "GET", "/");
@@ -214,10 +246,81 @@ test.describe("saving", () => {
     expect((await put(a.cookie, a.project.id, "index.html/x.html", "x")).json.error).toBe("parent-is-file");
   });
 
-  test("a file over 10 MB is refused", async () => {
+  test("a file over 5 MB is refused", async () => {
     const a = await person("big");
-    const big = await put(a.cookie, a.project.id, "big.jpg", Buffer.alloc(10 * 1024 * 1024 + 1));
+    const big = await put(a.cookie, a.project.id, "big.jpg", Buffer.alloc(5 * 1024 * 1024 + 1));
     expect(big.status).toBe(413);
+  });
+
+  test("a project holds 25 MB, and folders go eight deep", async () => {
+    const a = await person("full");
+    const chunk = (n: number) => Buffer.alloc(5 * 1024 * 1024 - 1024, n);
+    for (let i = 1; i <= 5; i++) expect((await put(a.cookie, a.project.id, `${i}.jpg`, chunk(i))).status).toBe(200);
+    expect((await put(a.cookie, a.project.id, "6.jpg", chunk(6))).json.error).toBe("project-too-large");
+    expect((await put(a.cookie, a.project.id, "a/b/c/d/e/f/g/h/x.html", "x")).json.error).toBe("path-deep");
+    const folder = await call(APP, "PUT", `${filesUrl(a.project.id, "a/b/c/d/e/f/g/h")}?folder=1`, { cookie: a.cookie });
+    expect(folder.json.error).toBe("path-deep");
+    // Moving a folder deeper is refused when a file inside would go too deep.
+    expect((await put(a.cookie, a.project.id, "a/b/c/d/x.html", "x")).status).toBe(200);
+    const move = await call(APP, "POST", `/api/projects/${a.project.id}/move`, {
+      cookie: a.cookie,
+      body: { from: "a", to: "p/q/r/s/a" },
+    });
+    expect(move.json.error).toBe("path-deep");
+  });
+
+  test("storage counts history, and a person whose storage is full cannot add new bytes", async () => {
+    const a = await person("quota");
+    const id = a.project.id;
+    const used = async () => (await call(APP, "GET", "/api/me", { cookie: a.cookie })).json.storage.used as number;
+    const mb = (n: number) => Buffer.alloc(1024 * 1024, n);
+    const start = await used();
+    expect((await put(a.cookie, id, "one.jpg", mb(1))).status).toBe(200);
+    await call(APP, "POST", `/api/projects/${id}/snapshots`, { cookie: a.cookie });
+    await call(APP, "DELETE", filesUrl(id, "one.jpg"), { cookie: a.cookie });
+    expect((await put(a.cookie, id, "two.jpg", mb(2))).status).toBe(200);
+    // one.jpg is gone from the project but stays in its history, so both count.
+    expect(await used()).toBe(start + 2 * 1024 * 1024);
+
+    sql(`UPDATE users SET held_bytes = ${100 * 1024 * 1024 - 1000} WHERE email = '${a.email}'`);
+    expect((await put(a.cookie, id, "three.jpg", mb(3))).json.error).toBe("storage-full");
+    // Bytes the project already holds take no new room.
+    expect((await put(a.cookie, id, "again.jpg", mb(1))).status).toBe(200);
+    expect((await call(APP, "POST", `/api/projects/${id}/copy`, { cookie: a.cookie })).json.error).toBe("storage-full");
+
+    // The cleanup counts again from what storage holds, so a wrong total does not last.
+    expect((await call(APP, "GET", "/cdn-cgi/local/scheduled")).text.trim()).toBe("ok");
+    expect(await used()).toBe(start + 2 * 1024 * 1024);
+  });
+
+  test("past the daily ceiling of the whole site, uploads and new accounts stop", async () => {
+    const a = await person("ceiling");
+    const day = Math.floor(Date.now() / 86_400_000);
+    const now = Date.now();
+    sql(
+      `INSERT OR REPLACE INTO counters (user_id, bucket, n, at) VALUES ('*', 'upload:${day}', ${2 * 1024 * 1024 * 1024}, ${now}), ('*', 'signup:${day}', 200, ${now})`,
+    );
+    try {
+      expect((await put(a.cookie, a.project.id, "late.html", "x")).json.error).toBe("ceiling");
+      expect((await signIn(`late-${now}@school.test`)).location).toBe("/?refused=busy");
+      // People who already have an account still get in.
+      expect((await signIn(a.email)).location).toBe("/projects");
+    } finally {
+      sql("DELETE FROM counters WHERE user_id = '*'");
+    }
+    expect((await put(a.cookie, a.project.id, "late.html", "x")).status).toBe(200);
+  });
+
+  test("a person has 20 projects, and a project in the trash frees its place", async () => {
+    const a = await person("many");
+    for (let i = 2; i <= 20; i++) expect((await call(APP, "POST", "/api/projects", { cookie: a.cookie })).status).toBe(200);
+    const over = await call(APP, "POST", "/api/projects", { cookie: a.cookie });
+    expect(over.json.error).toBe("too-many-projects");
+    await call(APP, "DELETE", `/api/projects/${a.project.id}`, { cookie: a.cookie });
+    expect((await call(APP, "POST", "/api/projects", { cookie: a.cookie })).status).toBe(200);
+    // Putting it back would make 21.
+    const back = await call(APP, "PATCH", `/api/projects/${a.project.id}`, { cookie: a.cookie, body: { trashed: false } });
+    expect(back.json.error).toBe("too-many-projects");
   });
 
   test("a form on a student site that posts to the API changes nothing", async () => {

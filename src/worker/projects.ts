@@ -1,7 +1,7 @@
 // Projects, files and snapshots. Bytes live in R2 by content hash, the index lives in D1.
 
-import { generateName, parentOf } from "../shared/rules";
-import { DAY, type Env, type FileRow, type Project, blobKey, randomHex, sha256 } from "./env";
+import { LIMITS, generateName, parentOf } from "../shared/rules";
+import { DAY, type Env, type FileRow, type Project, blobKey, mailAdmins, randomHex, sha256 } from "./env";
 
 const SNAPSHOT_EVERY = 10 * 60 * 1000;
 
@@ -85,7 +85,7 @@ export async function createProject(env: Env, ownerId: string, lang: string): Pr
   for (const [path, text] of Object.entries(starter(lang))) {
     const bytes = new TextEncoder().encode(text);
     const hash = await sha256(bytes);
-    await env.FILES.put(blobKey(project.id, hash), bytes);
+    await storeBlob(env, project, hash, bytes);
     inserts.push(
       env.DB.prepare(
         "INSERT INTO files (project_id, path, kind, hash, size, rev, updated_at) VALUES (?, ?, 'file', ?, ?, 1, ?)",
@@ -105,11 +105,19 @@ export async function listFiles(env: Env, projectId: string): Promise<FileRow[]>
   return results;
 }
 
+/** The bytes a copy of these files adds to a person's storage: each distinct object once. */
+export function copySize(files: FileRow[]): number {
+  const sizes = new Map(files.filter((f) => f.kind === "file").map((f) => [f.hash, f.size]));
+  let total = 0;
+  for (const size of sizes.values()) total += size;
+  return total;
+}
+
 /** Copies rows and R2 objects to a new project. Works on one item at a time to stay small in memory. */
-export async function copyProject(env: Env, source: Project, ownerId: string): Promise<Project> {
+export async function copyProject(env: Env, source: Project, ownerId: string, files: FileRow[]): Promise<Project> {
   const project = await insertProject(env, ownerId, source.id);
-  const files = await listFiles(env, source.id);
-  const hashes = [...new Set(files.filter((f) => f.kind === "file").map((f) => f.hash))];
+  const sizes = new Map(files.filter((f) => f.kind === "file").map((f) => [f.hash, f.size]));
+  const hashes = [...sizes.keys()];
   for (let i = 0; i < hashes.length; i += 6) {
     await Promise.all(
       hashes.slice(i, i + 6).map(async (hash) => {
@@ -118,13 +126,54 @@ export async function copyProject(env: Env, source: Project, ownerId: string): P
       }),
     );
   }
-  const inserts = files.map((f) =>
-    env.DB.prepare(
-      "INSERT INTO files (project_id, path, kind, hash, size, rev, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?)",
-    ).bind(project.id, f.path, f.kind, f.hash, f.size, f.updated_at),
-  );
+  const now = Date.now();
+  const inserts = [
+    ...files.map((f) =>
+      env.DB.prepare(
+        "INSERT INTO files (project_id, path, kind, hash, size, rev, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?)",
+      ).bind(project.id, f.path, f.kind, f.hash, f.size, f.updated_at),
+    ),
+    ...hashes.map((hash) =>
+      env.DB.prepare("INSERT OR IGNORE INTO blobs (project_id, hash, size, created_at) VALUES (?, ?, ?, ?)").bind(
+        project.id,
+        hash,
+        sizes.get(hash)!,
+        now,
+      ),
+    ),
+    env.DB.prepare("UPDATE users SET held_bytes = held_bytes + ? WHERE id = ?").bind(copySize(files), ownerId),
+  ];
   for (let i = 0; i < inserts.length; i += 50) await env.DB.batch(inserts.slice(i, i + 50));
   return project;
+}
+
+/** Whether the owner of a project has room for these bytes. An object the project holds takes none. */
+export async function hasRoom(env: Env, project: Pick<Project, "id" | "owner_id">, hash: string, size: number): Promise<boolean> {
+  const row = await env.DB.prepare(
+    "SELECT held_bytes, EXISTS (SELECT 1 FROM blobs WHERE project_id = ? AND hash = ?) AS have FROM users WHERE id = ?",
+  )
+    .bind(project.id, hash, project.owner_id)
+    .first<{ held_bytes: number; have: number }>();
+  return row !== null && (row.have === 1 || row.held_bytes + size <= LIMITS.person);
+}
+
+/**
+ * Puts an object in R2 and counts it for the owner. The object goes first: a failure in between
+ * leaves an object without a row, which the cleanup removes or counts.
+ */
+export async function storeBlob(env: Env, project: Pick<Project, "id" | "owner_id">, hash: string, bytes: ArrayBuffer | Uint8Array): Promise<void> {
+  await env.FILES.put(blobKey(project.id, hash), bytes);
+  await env.DB.batch([
+    env.DB.prepare(
+      "UPDATE users SET held_bytes = held_bytes + ?1 WHERE id = ?2 AND NOT EXISTS (SELECT 1 FROM blobs WHERE project_id = ?3 AND hash = ?4)",
+    ).bind(bytes.byteLength, project.owner_id, project.id, hash),
+    env.DB.prepare("INSERT OR IGNORE INTO blobs (project_id, hash, size, created_at) VALUES (?, ?, ?, ?)").bind(
+      project.id,
+      hash,
+      bytes.byteLength,
+      Date.now(),
+    ),
+  ]);
 }
 
 /** Returns the next revision number of a project and marks it as edited. */
@@ -274,6 +323,30 @@ export async function count(env: Env, userId: string, kind: string, windowMs: nu
   return row!.n;
 }
 
+/**
+ * Daily totals for the whole site, on top of the limits per person, because one person can make
+ * many Google accounts. Past one, uploads or new accounts stop until midnight UTC.
+ */
+export const CEILING = {
+  upload: 2 * 1024 * 1024 * 1024,
+  signup: 200,
+};
+
+/** Counts toward a daily total of the whole site. Mails the admins once, when it first goes past. */
+export async function underCeiling(env: Env, kind: keyof typeof CEILING, amount = 1): Promise<boolean> {
+  const limit = CEILING[kind];
+  const n = await count(env, "*", kind, DAY, amount);
+  if (n > limit && n - amount <= limit) {
+    await mailAdmins(
+      env,
+      `maak.io reached its daily ${kind} ceiling`,
+      `Today maak.io went past its ceiling of ${limit} for ${kind === "upload" ? "uploaded bytes" : "new accounts"}.\n` +
+        `${kind === "upload" ? "Uploads" : "New accounts"} are refused until midnight UTC. The ceiling is CEILING in src/worker/projects.ts.\n`,
+    );
+  }
+  return n <= limit;
+}
+
 /** The weekly job: empties old trash and deletes R2 objects that nothing refers to. */
 export async function cleanup(env: Env): Promise<{ projects: number; objects: number }> {
   const now = Date.now();
@@ -294,18 +367,41 @@ export async function cleanup(env: Env): Promise<{ projects: number; objects: nu
   do {
     const page = await env.FILES.list({ prefix: "projects/", cursor, limit: 500 });
     const doomed: string[] = [];
+    // The blobs table follows R2: a row for every object kept, none for an object deleted.
+    const rows: D1PreparedStatement[] = [];
     for (const object of page.objects) {
       const [, projectId, hash] = object.key.split("/");
       if (!used.has(projectId)) used.set(projectId, await hashesInUse(env, projectId));
       const set = used.get(projectId);
       // A save writes the object before the row, so a fresh object may not have its row yet.
       if (now - object.uploaded.getTime() < DAY) continue;
-      if (!set || !set.has(hash)) doomed.push(object.key);
+      if (!set || !set.has(hash)) {
+        doomed.push(object.key);
+        rows.push(env.DB.prepare("DELETE FROM blobs WHERE project_id = ? AND hash = ?").bind(projectId, hash));
+      } else {
+        rows.push(
+          env.DB.prepare("INSERT OR IGNORE INTO blobs (project_id, hash, size, created_at) VALUES (?, ?, ?, ?)").bind(
+            projectId,
+            hash,
+            object.size,
+            object.uploaded.getTime(),
+          ),
+        );
+      }
     }
     if (doomed.length) await env.FILES.delete(doomed);
+    if (rows.length) await env.DB.batch(rows);
     objects += doomed.length;
     cursor = page.truncated ? page.cursor : undefined;
   } while (cursor);
+  // Rows of purged projects go too, then every total is counted again from the rows.
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM blobs WHERE project_id NOT IN (SELECT id FROM projects) AND created_at < ?").bind(now - DAY),
+    env.DB.prepare(
+      `UPDATE users SET held_bytes = COALESCE(
+         (SELECT SUM(b.size) FROM blobs b JOIN projects p ON p.id = b.project_id WHERE p.owner_id = users.id), 0)`,
+    ),
+  ]);
   return { projects: old.length, objects };
 }
 

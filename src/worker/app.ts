@@ -2,13 +2,15 @@
 
 import { type Context, Hono } from "hono";
 import { LIMITS, contentType, nameError, pathError } from "../shared/rules";
-import { adminEmails, callback, currentUser, login, logout } from "./auth";
-import { DAY, type Env, type FileRow, type Project, type User, blobKey, randomHex, sha256 } from "./env";
+import { callback, currentUser, login, logout } from "./auth";
+import { DAY, type Env, type FileRow, type Project, type User, adminEmails, blobKey, mailAdmins, randomHex, sha256 } from "./env";
 import {
   copyProject,
+  copySize,
   count,
   createProject,
   ensureParents,
+  hasRoom,
   listFiles,
   listSnapshots,
   nameTaken,
@@ -16,14 +18,16 @@ import {
   purgeProject,
   restoreSnapshot,
   snapshotIfDue,
+  storeBlob,
   takeSnapshot,
+  underCeiling,
 } from "./projects";
 
 type Ctx = Context<{ Bindings: Env; Variables: { user: User | null } }>;
 
 const RATE = {
   savesPerMinute: 240,
-  uploadBytesPerDay: 1024 * 1024 * 1024,
+  uploadBytesPerDay: 100 * 1024 * 1024,
   projectsPerDay: 30,
 };
 
@@ -113,6 +117,7 @@ app.get("/api/me", (c) => {
   const user = c.get("user");
   return c.json({
     user: user && { email: user.email, name: user.name, lang: user.lang, admin: user.is_admin === 1 },
+    storage: user && { used: user.held_bytes, limit: LIMITS.person },
     siteSuffix: c.env.SITE_SUFFIX,
     contact: c.env.CONTACT ?? "",
   });
@@ -156,7 +161,10 @@ app.get("/api/projects", async (c) => {
 });
 
 async function mayCreate(c: Ctx, user: User): Promise<Response | null> {
-  const row = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM projects WHERE owner_id = ?").bind(user.id).first<{ n: number }>();
+  // A project in the trash frees its place. Its bytes still count toward the person's storage.
+  const row = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM projects WHERE owner_id = ? AND deleted_at IS NULL")
+    .bind(user.id)
+    .first<{ n: number }>();
   if (row!.n >= LIMITS.projects) return fail(c, 409, "too-many-projects");
   if ((await count(c.env, user.id, "project", DAY)) > RATE.projectsPerDay) return fail(c, 429, "rate");
   return null;
@@ -183,6 +191,10 @@ app.patch("/api/projects/:ref", async (c) => {
   const db = c.env.DB;
 
   if (body.trashed === false && project.deleted_at !== null) {
+    const live = await db.prepare("SELECT COUNT(*) AS n FROM projects WHERE owner_id = ? AND deleted_at IS NULL")
+      .bind(project.owner_id)
+      .first<{ n: number }>();
+    if (live!.n >= LIMITS.projects) return fail(c, 409, "too-many-projects");
     await db.prepare("UPDATE projects SET deleted_at = NULL WHERE id = ?").bind(project.id).run();
   } else if (project.deleted_at !== null) {
     return fail(c, 404, "not-found");
@@ -232,7 +244,9 @@ app.post("/api/projects/:ref/copy", async (c) => {
   if (!source) return fail(c, 404, "not-found");
   const refused = await mayCreate(c, user);
   if (refused) return refused;
-  return c.json({ project: publicProject(await copyProject(c.env, source, user.id), user) });
+  const files = await listFiles(c.env, source.id);
+  if (user.held_bytes + copySize(files) > LIMITS.person) return fail(c, 413, "storage-full");
+  return c.json({ project: publicProject(await copyProject(c.env, source, user.id, files), user) });
 });
 
 app.get("/api/projects/:ref/files", async (c) => {
@@ -279,6 +293,8 @@ app.put("/api/projects/:ref/files/*", async (c) => {
 
   if (c.req.query("folder") === "1") {
     if (existing) return fail(c, 409, "exists");
+    // A folder must have room for a file inside it.
+    if (pathError(`${path}/x`) === "deep") return fail(c, 400, "path-deep");
     const blocked = await ensureParents(c.env, project.id, `${path}/x`);
     if (blocked) return fail(c, 409, blocked);
     await nextRev(c.env, project.id);
@@ -298,6 +314,7 @@ app.put("/api/projects/:ref/files/*", async (c) => {
   const bytes = await c.req.arrayBuffer();
   if (bytes.byteLength > LIMITS.file) return fail(c, 413, "file-too-large");
   if ((await count(c.env, user.id, "bytes", DAY, bytes.byteLength)) > RATE.uploadBytesPerDay) return fail(c, 429, "rate");
+  if (!(await underCeiling(c.env, "upload", bytes.byteLength))) return fail(c, 429, "ceiling");
   const totals = await db.prepare(
     "SELECT COALESCE(SUM(size), 0) AS size, COUNT(*) AS n FROM files WHERE project_id = ? AND kind = 'file'",
   )
@@ -306,13 +323,15 @@ app.put("/api/projects/:ref/files/*", async (c) => {
   if (!existing && totals!.n >= LIMITS.files) return fail(c, 409, "too-many-files");
   if (totals!.size - (existing?.size ?? 0) + bytes.byteLength > LIMITS.project) return fail(c, 413, "project-too-large");
 
+  const hash = await sha256(bytes);
+  if (!(await hasRoom(c.env, project, hash, bytes.byteLength))) return fail(c, 413, "storage-full");
+
   const blocked = await ensureParents(c.env, project.id, path);
   if (blocked) return fail(c, 409, blocked);
   await snapshotIfDue(c.env, project);
 
   // Bytes first, row second. A failure in between leaves an unused object and no broken file.
-  const hash = await sha256(bytes);
-  await c.env.FILES.put(blobKey(project.id, hash), bytes);
+  await storeBlob(c.env, project, hash, bytes);
   const rev = await nextRev(c.env, project.id);
   const now = Date.now();
   if (existing) {
@@ -368,6 +387,17 @@ app.post("/api/projects/:ref/move", async (c) => {
   if (!source) return fail(c, 404, "not-found");
   if (rows.results.some((r) => r.path === to)) return fail(c, 409, "exists");
   if (source.kind === "file" && !contentType(to)) return fail(c, 415, "type");
+  if (source.kind === "folder") {
+    const { results: inside } = await db.prepare(
+      "SELECT path FROM files WHERE project_id = ?1 AND substr(path, 1, length(?2) + 1) = ?2 || '/'",
+    )
+      .bind(project.id, from)
+      .all<{ path: string }>();
+    for (const { path } of inside) {
+      const moved = pathError(to + path.slice(from.length));
+      if (moved) return fail(c, 400, `path-${moved}`);
+    }
+  }
   const blocked = await ensureParents(c.env, project.id, to);
   if (blocked) return fail(c, 409, blocked);
   // A move changes rows only. The bytes stay where they are, under their hash.
@@ -418,19 +448,12 @@ app.post("/api/reports", async (c) => {
 });
 
 /** Tells the admins about a report. The report is already stored, so a failed mail loses nothing. */
-async function mailReport(env: Env, origin: string, name: string, reason: string): Promise<void> {
-  const to = adminEmails(env);
-  if (!env.MAIL || !env.MAIL_FROM || to.length === 0) return;
-  try {
-    await env.MAIL.send({
-      from: { email: env.MAIL_FROM, name: "maak.io" },
-      to,
-      subject: `Report about ${name}`,
-      text: `Someone reported the project "${name}".\n\n${reason}\n\nHandle it at ${origin}/admin\n`,
-    });
-  } catch (e) {
-    console.error("report mail", (e as { code?: string }).code ?? "", (e as Error).message);
-  }
+function mailReport(env: Env, origin: string, name: string, reason: string): Promise<void> {
+  return mailAdmins(
+    env,
+    `Report about ${name}`,
+    `Someone reported the project "${name}".\n\n${reason}\n\nHandle it at ${origin}/admin\n`,
+  );
 }
 
 app.use("/api/admin/*", async (c, next) => {
