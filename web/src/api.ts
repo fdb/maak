@@ -11,6 +11,7 @@ export class ApiError extends Error {
 }
 
 export interface Me {
+  signup: "open" | "closed";
   user: { email: string; name: string; lang: string; admin: boolean } | null;
   siteSuffix: string;
   contact: string;

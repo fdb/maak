@@ -3,7 +3,7 @@
 import { type Context, Hono } from "hono";
 import { LIMITS, contentType, nameError, pathError } from "../shared/rules";
 import { callback, currentUser, login, logout } from "./auth";
-import { DAY, type Env, type FileRow, type Project, type User, adminEmails, blobKey, mailAdmins, randomHex, sha256 } from "./env";
+import { DAY, type Env, type FileRow, type Project, type User, adminEmails, blobKey, mailAdmins, randomHex, sha256, signupState } from "./env";
 import {
   copyProject,
   copySize,
@@ -113,9 +113,10 @@ app.get("/api/version", (c) =>
   }),
 );
 
-app.get("/api/me", (c) => {
+app.get("/api/me", async (c) => {
   const user = c.get("user");
   return c.json({
+    signup: await signupState(c.env),
     user: user && { email: user.email, name: user.name, lang: user.lang, admin: user.is_admin === 1 },
     storage: user && { used: user.held_bytes, limit: LIMITS.person },
     siteSuffix: c.env.SITE_SUFFIX,
@@ -471,7 +472,13 @@ app.get("/api/admin/state", async (c) => {
     ),
     db.prepare("SELECT at, admin, action, target, reason FROM moderation ORDER BY id DESC LIMIT 50"),
   ]);
-  return c.json({ allowed: allowed.results, invites: invites.results, reports: reports.results, moderation: moderation.results });
+  return c.json({
+    signup: await signupState(c.env),
+    allowed: allowed.results,
+    invites: invites.results,
+    reports: reports.results,
+    moderation: moderation.results,
+  });
 });
 
 app.post("/api/admin/allowed", async (c) => {
@@ -484,16 +491,20 @@ app.post("/api/admin/allowed", async (c) => {
   return c.json({ ok: true });
 });
 
+// The allow-list says who may make an account while sign-up is closed. Removing an entry leaves
+// existing accounts alone; to keep a person out, suspend them.
 app.delete("/api/admin/allowed", async (c) => {
   const { pattern } = await c.req.json<{ pattern?: string }>();
-  const clean = pattern ?? "";
-  // Removing an entry also ends the sessions it covered. A person who is still allowed by
-  // another entry signs in again; anyone else is refused at that point.
+  await c.env.DB.prepare("DELETE FROM allowed WHERE pattern = ?").bind(pattern ?? "").run();
+  return c.json({ ok: true });
+});
+
+app.post("/api/admin/signup", async (c) => {
+  const { signup } = await c.req.json<{ signup?: string }>();
+  if (signup !== "open" && signup !== "closed") return fail(c, 400, "signup");
   await c.env.DB.batch([
-    c.env.DB.prepare("DELETE FROM allowed WHERE pattern = ?").bind(clean),
-    c.env.DB.prepare(
-      "DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE email = ?1 OR substr(email, instr(email, '@') + 1) = ?1)",
-    ).bind(clean),
+    c.env.DB.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('signup', ?)").bind(signup),
+    logAction(c, `signup-${signup}`, "maak.io", ""),
   ]);
   return c.json({ ok: true });
 });

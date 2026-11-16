@@ -102,3 +102,11 @@ export function sameString(a: string, b: string): boolean {
 export function blobKey(projectId: string, hash: string): string {
   return `projects/${projectId}/${hash}`;
 }
+
+export type Signup = "open" | "closed";
+
+/** Whether anyone may make an account. An admin switches it on /admin; see migrations/0004_signup.sql. */
+export async function signupState(env: Env): Promise<Signup> {
+  const row = await env.DB.prepare("SELECT value FROM settings WHERE key = 'signup'").first<{ value: string }>();
+  return row?.value === "closed" ? "closed" : "open";
+}

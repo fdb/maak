@@ -3,7 +3,7 @@ import { crc32, deflateSync } from "node:zlib";
 import { expect, test } from "@playwright/test";
 import { unzipSync } from "fflate";
 import { boxText, preview, sessionCookie, setBox, signInPage } from "./browser";
-import { APP, call, filesUrl, site } from "./lib";
+import { APP, call, filesUrl, setUp, site } from "./lib";
 
 // A 1x1 PNG, used as "a photo".
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
@@ -447,15 +447,28 @@ test("on a narrow window the three areas become three tabs", async ({ page }) =>
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
-test("a person outside the allow-list reads that maak.io is invite-only", async ({ page }) => {
+test("anyone can make an account; while an admin has sign-up closed, a new address reads why", async ({ page }) => {
+  const admin = await setUp();
   await page.goto("/");
   await expect(page.locator("h1")).toHaveText("Schrijf je eerste website en zie ze meteen op haar eigen adres.");
+  await expect(page.locator(".front-note")).toHaveCount(0);
   await page.getByRole("link", { name: "Aanmelden" }).click();
-  await page.getByLabel("Email").fill("iemand@elders.test");
+  await page.getByLabel("Email").fill(`iemand-${Date.now()}@elders.test`);
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page.locator(".error")).toContainText("maak.io werkt voorlopig alleen op uitnodiging.");
-  await page.goto("/e/groene-vos");
-  await expect(page.getByRole("link", { name: "Aanmelden" })).toBeVisible();
+  await page.waitForURL(/\/e\/[a-z0-9-]+$/);
+  await page.context().clearCookies();
+
+  await call(APP, "POST", "/api/admin/signup", { cookie: admin.cookie, body: { signup: "closed" } });
+  try {
+    await page.goto("/");
+    await expect(page.locator(".front-note")).toHaveText("Een nieuw account maken kan nu alleen op uitnodiging.");
+    await page.getByRole("link", { name: "Aanmelden" }).click();
+    await page.getByLabel("Email").fill(`ander-${Date.now()}@elders.test`);
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await expect(page.locator(".error")).toContainText("maak.io neemt nu alleen nieuwe accounts aan op uitnodiging.");
+  } finally {
+    await call(APP, "POST", "/api/admin/signup", { cookie: admin.cookie, body: { signup: "open" } });
+  }
 });
 
 test("the editor loads nothing from another party", async ({ page }) => {
@@ -493,6 +506,11 @@ test("the admin handles the allow-list, invitations and reports, and blocks a si
   await visitor.getByLabel("Email").fill("admin@school.test");
   await visitor.getByRole("button", { name: "Sign in" }).click();
   await visitor.waitForURL("**/admin");
+  await visitor.getByRole("button", { name: "Aanmelden sluiten" }).click();
+  await expect(visitor.getByText("Alleen de lijst hieronder en uitnodigingen kunnen een account maken.", { exact: false })).toBeVisible();
+  await expect(visitor.locator("li", { hasText: "sloot aanmelden op" }).first()).toBeVisible();
+  await visitor.getByRole("button", { name: "Aanmelden openen" }).click();
+  await expect(visitor.getByText("Iedereen met een bevestigd e-mailadres kan een account maken.")).toBeVisible();
   const report = visitor.locator("li", { hasText: "inlogpagina van een bank" });
   await expect(report).toContainText("inlogpagina van een bank");
   await visitor.screenshot({ path: "test-results/admin.png", fullPage: true });

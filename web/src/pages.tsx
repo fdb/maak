@@ -183,7 +183,7 @@ export function Front(props: { me: Me; next: string } & LangProps) {
           </a>
           <A href="/about">{t("front.about")}</A>
         </p>
-        {!invite && !refused && <p class="dim front-note">{t("front.invite")}</p>}
+        {!invite && !refused && props.me.signup === "closed" && <p class="dim front-note">{t("front.invite")}</p>}
       </div>
       <Demo key={props.lang} suffix={props.me.siteSuffix} />
       <ul class="points">
@@ -523,10 +523,11 @@ export function Report() {
 }
 
 interface AdminState {
+  signup: "open" | "closed";
   allowed: { pattern: string; note: string }[];
   invites: { code: string; uses_left: number; expires_at: number }[];
   reports: { id: number; project_name: string; reason: string; created_at: number; handled_at: number | null; shared: number | null }[];
-  moderation: { at: number; admin: string; action: "block" | "unblock" | "suspend" | "restore"; target: string; reason: string }[];
+  moderation: { at: number; admin: string; action: "block" | "unblock" | "suspend" | "restore" | "signup-open" | "signup-closed"; target: string; reason: string }[];
 }
 
 interface AdminProject {
@@ -745,6 +746,18 @@ export function Admin(props: { me: Me }) {
         ))}
       </ul>
 
+      <h2>{t("admin.signup")}</h2>
+      <p class="row-form">
+        <span>{t(state.signup === "open" ? "admin.signup.open" : "admin.signup.closed")}</span>
+        <button
+          type="button"
+          class="button"
+          onClick={() => act(() => api("POST", "/api/admin/signup", { signup: state.signup === "open" ? "closed" : "open" }))}
+        >
+          {t(state.signup === "open" ? "admin.signup.close" : "admin.signup.reopen")}
+        </button>
+      </p>
+
       <h2>{t("admin.allowed")}</h2>
       <p class="dim">{t("admin.allowedHint")}</p>
       <form
@@ -825,7 +838,7 @@ const TEXTS: Record<"about" | "terms" | "privacy", Record<Lang, { title: string;
         "Een project is een map met echte bestanden. Elk project heeft één adres, naam.{suffix}. Zolang je niet deelt, zie alleen jij het.",
         "Er is geen knop om op te slaan. Wat je typt wordt bewaard, en Geschiedenis brengt een eerdere versie terug.",
         "De bestanden zijn van jou. Met ZIP downloaden krijg je de map zoals ze is, en ze werkt ook zonder maak.",
-        "maak werkt voorlopig alleen op uitnodiging. Vragen: {contact}.",
+        "Vragen: {contact}.",
       ],
     },
     en: {
@@ -836,7 +849,7 @@ const TEXTS: Record<"about" | "terms" | "privacy", Record<Lang, { title: string;
         "A project is a folder of real files. Every project has one address, name.{suffix}. Until you share it, only you can see it.",
         "There is no save button. What you type is kept, and History brings back an earlier version.",
         "The files are yours. Download ZIP gives you the folder as it is, and it works without maak.",
-        "maak is invite-only for now. Questions: {contact}.",
+        "Questions: {contact}.",
       ],
     },
   },

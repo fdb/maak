@@ -8,6 +8,9 @@ const put = (cookie: string, project: string, path: string, body: string | Buffe
     headers: rev === undefined ? {} : { "If-Match": String(rev) },
   });
 
+const signup = async (cookie: string, state: "open" | "closed") =>
+  expect((await call(APP, "POST", "/api/admin/signup", { cookie, body: { signup: state } })).status).toBe(200);
+
 const read = async (cookie: string, project: string, path: string) =>
   (await call(APP, "GET", filesUrl(project, path), { cookie })).text;
 
@@ -15,22 +18,30 @@ const revOf = async (cookie: string, project: string, path: string): Promise<num
   (await call(APP, "GET", filesUrl(project), { cookie })).json.files.find((f: any) => f.path === path).rev;
 
 test.describe("sign-in", () => {
-  test("an invited person signs in, anyone else is refused", async () => {
-    await setUp();
-    const inside = await signIn("student@school.test");
-    expect(inside.cookie).toContain("__Host-session=");
-    const me = await call(APP, "GET", "/api/me", { cookie: inside.cookie });
-    expect(me.json.user.email).toBe("student@school.test");
+  test("sign-up is open; closed, only the allow-list and invitations get in", async () => {
+    const admin = await setUp();
+    const open = await signIn("eve@elsewhere.test");
+    expect(open.cookie).toContain("__Host-session=");
+    expect((await call(APP, "GET", "/api/me")).json.signup).toBe("open");
 
-    const outside = await signIn("eve@elsewhere.test");
+    await signup(admin.cookie, "closed");
+    expect((await call(APP, "GET", "/api/me")).json.signup).toBe("closed");
+    const outside = await signIn("mallory@elsewhere.test");
     expect(outside.location).toBe("/?refused=invite");
     expect(outside.cookie).not.toContain("__Host-session=");
+    // Closing lets in whoever already has an account, and the allow-list.
+    expect((await signIn("eve@elsewhere.test")).cookie).toContain("__Host-session=");
+    expect((await signIn("student@school.test")).cookie).toContain("__Host-session=");
+    await signup(admin.cookie, "open");
+    expect((await signIn("mallory@elsewhere.test")).cookie).toContain("__Host-session=");
+
+    // Only an admin may switch it, and each switch is in the log.
+    expect((await call(APP, "POST", "/api/admin/signup", { cookie: open.cookie, body: { signup: "closed" } })).status).toBe(404);
+    const log = (await call(APP, "GET", "/api/admin/state", { cookie: admin.cookie })).json.moderation;
+    expect(log.slice(0, 2).map((m: any) => m.action)).toEqual(["signup-open", "signup-closed"]);
   });
 
-  test("a person outside the allow-list cannot create a project", async () => {
-    const outside = await signIn("mallory@elsewhere.test");
-    const made = await call(APP, "POST", "/api/projects", { cookie: outside.cookie });
-    expect(made.status).toBe(401);
+  test("without a session nobody can create a project", async () => {
     expect((await call(APP, "POST", "/api/projects")).status).toBe(401);
   });
 
@@ -41,12 +52,14 @@ test.describe("sign-in", () => {
 
   test("an invite code lets in a private address, a limited number of times", async () => {
     const admin = await setUp();
+    await signup(admin.cookie, "closed");
     const invite = await call(APP, "POST", "/api/admin/invites", { cookie: admin.cookie, body: { uses: 1, days: 1 } });
     const code = invite.json.code as string;
     expect((await signIn("guest@gmail.test", { invite: code })).cookie).toContain("__Host-session=");
     // The address is now on the list, so the next sign-in needs no code.
     expect((await signIn("guest@gmail.test")).cookie).toContain("__Host-session=");
     expect((await signIn("second@gmail.test", { invite: code })).location).toBe("/?refused=invite");
+    await signup(admin.cookie, "open");
   });
 
   test("a first sign-in lands in a new project with the starter files", async () => {
@@ -638,16 +651,17 @@ test.describe("projects", () => {
     expect(v.json.commit).toBe("dev");
   });
 
-  test("removing an allow-list entry ends the sessions it covered", async () => {
+  test("with sign-up closed, removing an allow-list entry stops new accounts from it, not existing ones", async () => {
     const admin = await setUp();
+    await signup(admin.cookie, "closed");
     await call(APP, "POST", "/api/admin/allowed", { cookie: admin.cookie, body: { pattern: "workshop.test" } });
     const guest = await signIn("guest@workshop.test");
     expect((await call(APP, "GET", "/api/me", { cookie: guest.cookie })).json.user.email).toBe("guest@workshop.test");
     await call(APP, "DELETE", "/api/admin/allowed", { cookie: admin.cookie, body: { pattern: "workshop.test" } });
-    expect((await call(APP, "GET", "/api/me", { cookie: guest.cookie })).json.user).toBeNull();
-    expect((await signIn("guest@workshop.test")).location).toBe("/?refused=invite");
-    // The admin and people on other entries are untouched.
-    expect((await call(APP, "GET", "/api/me", { cookie: admin.cookie })).json.user).not.toBeNull();
+    expect((await call(APP, "GET", "/api/me", { cookie: guest.cookie })).json.user.email).toBe("guest@workshop.test");
+    expect((await signIn("guest@workshop.test")).cookie).toContain("__Host-session=");
+    expect((await signIn("other@workshop.test")).location).toBe("/?refused=invite");
+    await signup(admin.cookie, "open");
   });
 
   test("the weekly cleanup runs and leaves files in use alone", async () => {

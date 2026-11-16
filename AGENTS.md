@@ -17,7 +17,7 @@ One Cloudflare Worker, one D1 database, one R2 bucket. Student code is stored an
 
 - Cloudflare account Enigmeta. Worker `maak` on routes `maak.io/*` and `*.maak.io/*`, D1 `maak` (location hint Western Europe), R2 `maak-files` (EU jurisdiction).
 - Sign-in is Google, OAuth client `maak.io web` in the Google Cloud project `maakio`, redirect `https://maak.io/auth/callback`.
-- Secrets, set with `npx wrangler secret put <NAME> --env production`: `OIDC_CLIENT_SECRET`, `ADMIN_EMAILS` (comma-separated). `CONTACT` is a plain variable in `wrangler.jsonc`. Without `ADMIN_EMAILS` and an allow-list entry nobody can sign in.
+- Secrets, set with `npx wrangler secret put <NAME> --env production`: `OIDC_CLIENT_SECRET`, `ADMIN_EMAILS` (comma-separated). `CONTACT` is a plain variable in `wrangler.jsonc`. Without `ADMIN_EMAILS` nobody can open `/admin`.
 - Mail: Cloudflare Email Routing forwards `info@maak.io` to the owner. `CONTACT` shows that address on the about and privacy pages. Each report sends a note to `ADMIN_EMAILS` through the `send_email` binding `MAIL`, from `MAIL_FROM` (`reports@mail.maak.io`), which needs `mail.maak.io` onboarded to Cloudflare Email Sending. Locally the mail is simulated and printed. A failed send is logged; the report is stored either way.
 - DNS: a proxied wildcard record `*` (A 192.0.2.1, a placeholder) sends every `name.maak.io` to the Worker. `staging.maak.io` is a DNS-only record to another server and is a reserved project name.
 
@@ -55,7 +55,8 @@ One Cloudflare Worker, one D1 database, one R2 bucket. Student code is stored an
 
 ## Limits
 
-- Sign-up is meant to be open, and students use their own Gmail, so one set of limits holds for everyone (`LIMITS` in `src/shared/rules.ts`): 5 MB per file, 25 MB and 150 files per project, 20 projects (the trash frees a place), paths eight segments deep, 100 MB of storage per person.
+- Sign-up is open: anyone with a verified address makes an account. An admin closes it on `/admin` (`settings` row `signup`, logged in `moderation`); closed, only the allow-list and invitations make new accounts, and existing accounts still sign in. To keep one person out, suspend them.
+- Students use their own Gmail, so one set of limits holds for everyone (`LIMITS` in `src/shared/rules.ts`): 5 MB per file, 25 MB and 150 files per project, 20 projects (the trash frees a place), paths eight segments deep, 100 MB of storage per person.
 - Storage counts what R2 holds: every object of the person's projects, history (30 days) and trash included. `blobs` has a row per R2 object and `users.held_bytes` the sum; a save adds to it and the weekly cleanup counts it again from `blobs`. Deleting a file frees nothing until its snapshots expire.
 - A shared site refuses a file to a page on another site (`Sec-Fetch-Site`, and the `Referer` between student sites), but serves a link that opens it, a frame that holds a page, and requests without fetch metadata. The private alias is exempt: the project list frames it with an empty sandbox, whose requests count as cross-site. A hotlink still costs one Worker request; it no longer costs a stream of range requests.
 - `CEILING` in `src/worker/projects.ts` caps the whole site per UTC day: 2 GB of uploads and 200 new accounts. Past it uploads get `ceiling`, new accounts `/?refused=busy`, and the admins get one mail. The counters use `user_id = '*'`.

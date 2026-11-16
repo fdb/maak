@@ -1,7 +1,7 @@
 // Sign-in with OpenID Connect: authorization code flow with PKCE, state and nonce.
 // maak.io stores no passwords. The session is a random value in a __Host- cookie.
 
-import { DAY, type Env, type User, adminEmails, randomHex, sha256 } from "./env";
+import { DAY, type Env, type User, adminEmails, randomHex, sha256, signupState } from "./env";
 import { createProject, underCeiling } from "./projects";
 
 const SESSION_COOKIE = "__Host-session";
@@ -116,8 +116,10 @@ async function verifyIdToken(token: string, doc: Discovery, env: Env, nonce: str
 }
 
 
-async function mayEnter(env: Env, email: string, invite: string): Promise<boolean> {
+/** Whether this address may make a new account. Someone who has one already always may sign in. */
+async function mayJoin(env: Env, email: string, invite: string): Promise<boolean> {
   if (adminEmails(env).includes(email)) return true;
+  if ((await signupState(env)) === "open") return true;
   const domain = email.slice(email.lastIndexOf("@") + 1);
   const hit = await env.DB.prepare("SELECT 1 FROM allowed WHERE pattern IN (?, ?) LIMIT 1")
     .bind(email, domain)
@@ -213,8 +215,6 @@ export async function callback(req: Request, env: Env): Promise<Response> {
   if (!claims.email || claims.email_verified !== true) return refused("email");
 
   const email = claims.email.toLowerCase();
-  if (!(await mayEnter(env, email, flow.invite))) return refused("invite");
-
   const now = Date.now();
   const isAdmin = adminEmails(env).includes(email) ? 1 : 0;
   let next = flow.next;
@@ -222,6 +222,7 @@ export async function callback(req: Request, env: Env): Promise<Response> {
     .bind(doc.issuer, claims.sub)
     .first<{ id: string; suspended_at: number | null }>();
   if (user?.suspended_at && !isAdmin) return refused("suspended");
+  if (!user && !(await mayJoin(env, email, flow.invite))) return refused("invite");
   if (user) {
     await env.DB.prepare("UPDATE users SET email = ?, is_admin = ?, seen_at = ? WHERE id = ?")
       .bind(email, isAdmin, now, user.id)
