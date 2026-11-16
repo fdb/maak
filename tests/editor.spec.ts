@@ -1099,3 +1099,26 @@ test("each project in the list shows its page as a small picture that runs no sc
   await page.locator(".projects li .thumb").click();
   await expect(page).toHaveURL(new RegExp(`/e/${name}$`));
 });
+
+test("a double-click on a word in the code selects that word", async ({ page }) => {
+  await signInPage(page, "dblclick");
+  const box = page.locator(".box").nth(0);
+  await expect(box.locator(".cm-content")).toContainText("Welkom op mijn website");
+  // The middle of the word "Welkom", from the text node that holds it.
+  const at = await box.locator(".cm-content").evaluate((el) => {
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+      const node = walker.currentNode as Text;
+      const i = node.data.indexOf("Welkom");
+      if (i < 0) continue;
+      const range = document.createRange();
+      range.setStart(node, i + 2);
+      range.setEnd(node, i + 3);
+      const r = range.getBoundingClientRect();
+      return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    }
+    throw new Error("no Welkom");
+  });
+  await page.mouse.dblclick(at.x, at.y);
+  await expect.poll(() => page.evaluate(() => getSelection()?.toString())).toBe("Welkom");
+});
