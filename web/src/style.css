@@ -505,6 +505,32 @@ button.address:hover {
   width: 14rem;
 }
 
+/* In the bar the field takes the place of the address: same box, same text position. The border
+   comes out of the padding, and the hint hangs below like a popup, so the bar keeps its height. */
+.bar .name-form {
+  position: relative;
+  flex-wrap: nowrap;
+}
+
+.bar .name-form input {
+  font-size: 1rem;
+  font-weight: 500;
+  padding: calc(0.25rem - 1px) calc(0.4rem - 1px);
+}
+
+.bar .name-form .hint-line {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  padding: 0.3rem 0.55rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  white-space: nowrap;
+}
+
 .hint-line {
   font-size: 0.85rem;
   flex-basis: 100%;
@@ -1688,6 +1714,26 @@ a.project-name:hover {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /* While renaming, Save and Cancel take the place of Share and More, and the field shrinks
+     to what is left of the line. */
+  .editor .bar:has(> .name-form) > .menu {
+    display: none;
+  }
+
+  .editor .bar > .name-form label {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .editor .bar > .name-form input {
+    width: 100%;
+  }
+
+  .editor .bar > .name-form .hint-line {
+    white-space: normal;
+    right: 0;
   }
 
   /* Share, or Copy on another person's project, starts the right-hand group. */

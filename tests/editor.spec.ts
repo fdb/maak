@@ -356,6 +356,36 @@ test("renaming the project changes the address, and the preview keeps working", 
   await expect(preview(page).locator("h1")).toHaveText("Na de naamswijziging");
 });
 
+test("the rename field takes the place of the address without moving the bar or the panels", async ({ page }) => {
+  const { name } = await signInPage(page, "steady");
+  await saved(page);
+  const bar = page.locator("header.bar");
+  const below = page.locator(".pane-files h2");
+  const box = async (locator: import("@playwright/test").Locator) => (await locator.boundingBox())!;
+  const before = { bar: await box(bar), below: await box(below), address: await box(bar.locator(".address")) };
+  await page.getByRole("button", { name: `Naam wijzigen: ${name}` }).click();
+  const input = page.getByLabel("Naam van het project");
+  await expect(input).toBeFocused();
+  await expect(page.locator(".name-form")).toContainText("Oude links stoppen met werken.");
+  const after = { bar: await box(bar), below: await box(below), input: await box(input) };
+  expect(after.bar.height).toBe(before.bar.height);
+  expect(after.below.y).toBe(before.below.y);
+  // The field sits where the address was, so the name does not jump.
+  expect(Math.abs(after.input.x - before.address.x)).toBeLessThan(1);
+  expect(Math.abs(after.input.y - before.address.y)).toBeLessThan(1);
+  expect(Math.abs(after.input.height - before.address.height)).toBeLessThan(1);
+  await page.screenshot({ path: "test-results/rename-bar.png", clip: { x: 0, y: 0, width: 900, height: 110 } });
+  // On a phone the field takes the second line, in place of Share and More.
+  await page.keyboard.press("Escape");
+  await page.setViewportSize({ width: 390, height: 800 });
+  const phone = await box(bar);
+  await page.getByRole("button", { name: `Naam wijzigen: ${name}` }).click();
+  await expect(input).toBeFocused();
+  expect((await box(bar)).height).toBe(phone.height);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await page.screenshot({ path: "test-results/rename-bar-phone.png", clip: { x: 0, y: 0, width: 390, height: 160 } });
+});
+
 test("the editor works by keyboard: new file, Cmd+S, menus", async ({ page }) => {
   await signInPage(page, "keys");
   await page.getByRole("button", { name: "Nieuw bestand" }).focus();
