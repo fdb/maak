@@ -16,11 +16,29 @@ export const LIMITS = {
   sizeHint: 500_000,
 };
 
+/** Names a site could use for itself: infrastructure, pages and services. Refused as a whole name. */
 export const RESERVED = new Set([
-  "www", "api", "app", "admin", "mail", "static", "copy", "login", "logout", "auth", "assets",
-  "help", "about", "terms", "privacy", "report", "abuse", "support", "status", "blog", "docs",
-  "cdn", "ftp", "smtp", "imap", "pop", "ns1", "ns2", "mx", "dev", "test", "staging", "preview",
-  "maak", "root", "null", "undefined", "account", "accounts", "security", "postmaster", "webmaster",
+  "www", "api", "app", "apps", "admin", "mail", "email", "static", "copy", "login", "logout", "auth",
+  "assets", "asset", "help", "about", "terms", "privacy", "report", "reports", "abuse", "support",
+  "status", "blog", "docs", "doc", "cdn", "ftp", "sftp", "smtp", "imap", "pop", "pop3", "ns1", "ns2",
+  "ns3", "dns", "mx", "dev", "test", "tests", "testing", "staging", "stage", "preview", "beta",
+  "alpha", "demo", "sandbox", "prod", "production", "maak", "root", "null", "undefined", "account",
+  "accounts", "security", "postmaster", "webmaster", "hostmaster", "media", "img", "images", "image",
+  "files", "file", "upload", "uploads", "download", "downloads", "storage", "data", "db", "backup",
+  "dashboard", "panel", "console", "portal", "home", "index", "editor", "edit", "new", "share",
+  "sites", "site", "web", "server", "proxy", "gateway", "vpn", "remote", "git", "ci", "build",
+  "deploy", "monitor", "metrics", "stats", "analytics", "track", "events", "billing", "pay",
+  "payment", "payments", "shop", "store", "news", "info", "contact", "legal", "noc",
+  "moderation", "moderator", "mod", "mods", "staff", "team", "teacher", "teachers", "school",
+  "localhost", "example", "invalid", "wpad", "autodiscover", "autoconfig", "signin", "signup",
+  "register", "password", "reset", "verify", "oauth", "sso", "id", "identity", "user", "users",
+]);
+
+/** Words that make a name look official wherever they stand, as in "maak-admin" or "official-site". */
+export const OFFICIAL = new Set([
+  "maak", "maakio", "admin", "administrator", "official", "officieel", "support", "helpdesk",
+  "staff", "moderator", "moderation", "security", "verify", "verification", "login", "signin",
+  "password", "account", "billing", "abuse", "postmaster", "webmaster", "sysadmin", "root",
 ]);
 
 export type NameError = "length" | "chars" | "reserved";
@@ -29,7 +47,7 @@ export type NameError = "length" | "chars" | "reserved";
 export function nameError(name: string): NameError | null {
   if (name.length < 3 || name.length > 40) return "length";
   if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(name)) return "chars";
-  if (RESERVED.has(name)) return "reserved";
+  if (RESERVED.has(name) || name.split("-").some((word) => OFFICIAL.has(word))) return "reserved";
   return null;
 }
 

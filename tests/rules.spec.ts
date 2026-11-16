@@ -13,6 +13,18 @@ test("project names are DNS labels without a double hyphen", () => {
   expect(nameError("admin")).toBe("reserved");
 });
 
+test("names that could pass for an official address are reserved", () => {
+  for (const name of ["cdn", "assets", "test", "media", "img", "files", "download", "dashboard", "moderation"]) {
+    expect(nameError(name), name).toBe("reserved");
+  }
+  for (const name of ["maak-admin", "admin-panel", "official-site", "school-support", "verify-account", "maakio"]) {
+    expect(nameError(name), name).toBe("reserved");
+  }
+  for (const name of ["badminton", "testament", "groene-vos", "my-assets-page"]) {
+    expect(nameError(name), name).toBeNull();
+  }
+});
+
 test("generated names pass the name rules", () => {
   for (let i = 0; i < 200; i++) expect(nameError(generateName())).toBeNull();
 });
