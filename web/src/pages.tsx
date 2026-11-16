@@ -4,6 +4,7 @@ import { Download, FileCode, FileImage, FolderOpen, Globe, History, Palette } fr
 import type { ComponentChildren } from "preact";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { ApiError, type Me, type ProjectInfo, api } from "./api";
+import { EditorView, makeState } from "./cm";
 import { type Lang, errorText, getLang, t, when } from "./i18n";
 import { ThemeToggle } from "./look";
 import { A, CopyButton, Menu, go } from "./ui";
@@ -52,81 +53,36 @@ interface LangProps {
   onLang: (lang: Lang) => void;
 }
 
-type Piece = [kind: string, text: string];
-
-/** One line of code in the picture of the editor: pieces of text with their colour class. */
-function Code(props: { lines: Piece[][] }) {
-  return (
-    <pre class="demo-code">
-      {props.lines.map((line) => (
-        <div>
-          {line.map(([kind, text]) => (
-            <span class={kind && `tok-${kind}`}>{text}</span>
-          ))}
-        </div>
-      ))}
-    </pre>
-  );
+/** One box of the demo: the code editor of the real editor, on text that is never saved. */
+function DemoBox(props: { path: string; text: string; onChange: (text: string) => void }) {
+  const host = useRef<HTMLDivElement>(null);
+  const change = useRef(props.onChange);
+  change.current = props.onChange;
+  useEffect(() => {
+    const view = new EditorView({
+      parent: host.current!,
+      state: makeState(props.path, props.text, false, props.path, (text) => change.current(text)),
+    });
+    return () => view.destroy();
+  }, []);
+  return <div class="demo-code" ref={host} />;
 }
 
-const tag = (indent: string, name: string, text: string): Piece[] => [
-  ["", indent],
-  ["punct", "<"],
-  ["tag", name],
-  ["punct", ">"],
-  ["", text],
-  ["punct", "</"],
-  ["tag", name],
-  ["punct", ">"],
-];
-
-const rule = (name: string, value: string): Piece[] => [
-  ["", "  "],
-  ["name", name],
-  ["punct", ": "],
-  ["string", value],
-  ["punct", ";"],
-];
-
 /**
- * A picture of the editor, made of HTML so it follows the theme and the language. It is not the
- * editor: nothing in it can be typed in. The small page on the right is what the code would give.
+ * A small editor on the front page, made of HTML so it follows the theme and the language. The two
+ * boxes are real code boxes and the page on the right follows what is typed. Nothing is saved.
+ * The page is a frame with an empty sandbox, so no script runs and nothing typed here can reach
+ * the editor's origin.
  */
 function Demo(props: { suffix: string }) {
-  const html: Piece[][] = [
-    tag("", "h1", t("front.demo.h1")),
-    tag("", "p", t("front.demo.p")),
-    [
-      ["punct", "<"],
-      ["tag", "a"],
-      ["", " "],
-      ["name", "href"],
-      ["punct", "="],
-      ["string", `"${t("front.demo.page")}"`],
-      ["punct", ">"],
-      ["", t("front.demo.a")],
-      ["punct", "</"],
-      ["tag", "a"],
-      ["punct", ">"],
-    ],
-  ];
-  const css: Piece[][] = [
-    [
-      ["selector", "body"],
-      ["punct", " {"],
-    ],
-    rule("font-family", "Georgia"),
-    rule("background", "lemonchiffon"),
-    [["punct", "}"]],
-    [
-      ["selector", "h1"],
-      ["punct", " {"],
-    ],
-    rule("color", "tomato"),
-    [["punct", "}"]],
-  ];
+  const [html, setHtml] = useState(
+    () =>
+      `<h1>${t("front.demo.h1")}</h1>\n<p>${t("front.demo.p")}</p>\n<a href="${t("front.demo.page")}">${t("front.demo.a")}</a>`,
+  );
+  const [css, setCss] = useState("body {\n  font-family: Georgia;\n  background: lemonchiffon;\n}\nh1 {\n  color: tomato;\n}");
+  const page = `<!doctype html><meta charset="utf-8"><style>${css}</style>${html}`;
   return (
-    <div class="demo" role="img" aria-label={t("front.demo")}>
+    <div class="demo" role="group" aria-label={t("front.demo")}>
       <div class="demo-files">
         <div class="demo-label">{t("front.demo.files")}</div>
         <div class="demo-file on">
@@ -151,12 +107,12 @@ function Demo(props: { suffix: string }) {
           <span class="kind kind-html" />
           index.html
         </div>
-        <Code lines={html} />
+        <DemoBox path="index.html" text={html} onChange={setHtml} />
         <div class="demo-label demo-second">
           <span class="kind kind-css" />
           style.css
         </div>
-        <Code lines={css} />
+        <DemoBox path="style.css" text={css} onChange={setCss} />
       </div>
       <div class="demo-preview">
         <div class="demo-label">
@@ -165,11 +121,7 @@ function Demo(props: { suffix: string }) {
             {t("front.demo.site")}.{props.suffix}
           </span>
         </div>
-        <div class="demo-page">
-          <div class="demo-h1">{t("front.demo.h1")}</div>
-          <div>{t("front.demo.p")}</div>
-          <div class="demo-a">{t("front.demo.a")}</div>
-        </div>
+        <iframe class="demo-page" sandbox="" srcdoc={page} title={t("front.demo.preview")} />
       </div>
     </div>
   );
@@ -224,7 +176,7 @@ export function Front(props: { me: Me; next: string } & LangProps) {
         </p>
         {!invite && !refused && <p class="dim front-note">{t("front.invite")}</p>}
       </div>
-      <Demo suffix={props.me.siteSuffix} />
+      <Demo key={props.lang} suffix={props.me.siteSuffix} />
       <ul class="points">
         {points.map((point) => (
           <li>

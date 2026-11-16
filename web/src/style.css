@@ -1160,6 +1160,10 @@ body.menu-open .frame-shield {
   background: var(--panel);
   box-shadow: var(--shadow);
   font-size: 0.87rem;
+}
+
+.demo-label,
+.demo-files {
   cursor: default;
   user-select: none;
 }
@@ -1211,34 +1215,13 @@ body.menu-open .frame-shield {
   color: var(--gray);
 }
 
+/* The boxes grow with their text, so the demo has no scroll bars. */
 .demo-code {
-  margin: 0;
-  padding: 0.8rem 0.9rem;
-  font: 13.5px/1.65 var(--mono);
-  font-variant-ligatures: none;
-  color: var(--code-fg);
-  overflow: hidden;
-  white-space: pre;
+  --code-size: 13.5px;
 }
 
-.demo-code .tok-tag {
-  color: var(--tok-tag);
-}
-
-.demo-code .tok-name {
-  color: var(--tok-name);
-}
-
-.demo-code .tok-string {
-  color: var(--tok-string);
-}
-
-.demo-code .tok-selector {
-  color: var(--tok-selector);
-}
-
-.demo-code .tok-punct {
-  color: var(--tok-punct);
+.demo-code .cm-content {
+  padding-bottom: 10px;
 }
 
 .demo-preview {
@@ -1253,27 +1236,15 @@ body.menu-open .frame-shield {
   text-overflow: ellipsis;
 }
 
-/* The student's page decides its own colours, so this stays the same in dark mode. */
+/* The student's page decides its own colours, so the frame stays white in dark mode. */
 .demo-page {
   flex: 1;
-  padding: 1.4rem 1.3rem;
-  background: lemonchiffon;
-  color: black;
-  font: 1rem/1.5 Georgia, serif;
-}
-
-.demo-h1 {
-  font-size: 1.9rem;
-  font-weight: bold;
-  line-height: 1.2;
-  color: tomato;
-  margin-bottom: 0.9rem;
-}
-
-.demo-a {
-  margin-top: 0.9rem;
-  color: #0000ee;
-  text-decoration: underline;
+  width: 100%;
+  min-height: 14rem;
+  border: 0;
+  background: white;
+  /* A link in the page would lead the frame to a page that does not exist. */
+  pointer-events: none;
 }
 
 .points {
