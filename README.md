@@ -1,12 +1,27 @@
-# maak
+<p align="center">
+  <a href="https://maak.io"><img src="web/public/favicon.svg" alt="" width="96" height="96"></a>
+</p>
 
-A browser editor where a student writes their first website and sees it live at its own address. It runs at [maak.io](https://maak.io).
+<h1 align="center">maak</h1>
+
+<p align="center"><strong>Build a site without the fight.</strong></p>
+
+<p align="center">
+  <a href="https://maak.io">maak.io</a> ·
+  <a href="#run-it-locally">Run it locally</a> ·
+  <a href="#run-your-own">Run your own</a> ·
+  <a href="LICENSE">MIT License</a>
+</p>
+
+<br>
 
 ![The maak editor: a file list, the HTML and CSS of a page, and the page itself in the preview](.github/editor.png)
 
-A student signs in, gets a project with a name like `gele-maan`, and edits HTML, CSS and JavaScript in several files. The preview on the right reloads on every save. Share switches the site on at `gele-maan.maak.io`, where anyone can open it.
+maak is a quiet editor in the browser for people who want to learn how a website is made. You write HTML, CSS and JavaScript in real files, the page changes next to the code as you type, and when you share it, it lives at its own address, like `gele-maan.maak.io`.
 
-The editor is for a first lesson in making web pages. It has Emmet for HTML, drag-and-drop of images into the code, a console strip under the preview, history of each file for 30 days, a trash, and a ZIP download of a project or of everything a person made. The interface is in Dutch and English.
+An AI model can now write a whole site from one sentence. It is still worth knowing what a tag, a stylesheet and a relative path are, so you can read what was made and change it yourself. maak is for learning that. It has no assistant, no templates, no build step and no framework. You get a folder of files, the page they make, and an address to show it to someone. It suits a first lesson in a classroom as well as someone on their own who wants to understand the basics.
+
+The editor has Emmet for HTML, images dragged straight into the code, a console strip under the preview, 30 days of history for every file, a trash, and a ZIP download of a project or of everything you made. The project is a plain folder that works anywhere without maak. The interface is in Dutch and English. The editor loads nothing from other parties, shows no ads, and uses one cookie, to keep you signed in.
 
 ## How it works
 
