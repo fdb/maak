@@ -294,8 +294,23 @@ test("a preview that hangs can be restarted without leaving the editor", async (
   // The editor's own page keeps running and saving while the preview hangs.
   await type(2, 'document.querySelector("h1").textContent = "Weer in orde";');
   await saved(page);
-  await bar.getByRole("button", { name: "Voorbeeld opnieuw starten" }).dispatchEvent("click");
-  await expect(preview(page).locator("h1")).toHaveText("Weer in orde");
+  // On macOS the hung process stays stuck for this host name: the reload after the save hangs
+  // again, the bar comes back, and its button moves the preview to a fresh twin. On Linux Chromium
+  // (CI) that reload can recover by itself and the bar does not come back. So the test presses the
+  // button whenever it is there, from inside the page so it never waits on a button that is gone.
+  await expect
+    .poll(
+      async () => {
+        await page.evaluate(() =>
+          [...document.querySelectorAll<HTMLButtonElement>(".preview .strip.warn button")]
+            .find((b) => b.textContent?.includes("Voorbeeld opnieuw starten"))
+            ?.click(),
+        );
+        return preview(page).locator("h1").textContent({ timeout: 1000 }).catch(() => null);
+      },
+      { timeout: 20_000 },
+    )
+    .toBe("Weer in orde");
   await expect(bar).toHaveCount(0);
   // A later edit still reaches the restarted preview.
   await type(0, "<!doctype html><h1>Na de herstart</h1>");
