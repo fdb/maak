@@ -629,7 +629,17 @@ test("large images are resized in the browser before the upload, all in the same
 });
 
 test("on a phone the bar has two lines: maak, status and theme; then the address, Share and More", async ({ page }) => {
-  await signInPage(page, "bar");
+  const { name } = await signInPage(page, "bar");
+  // The longest name a project can have, so the address cannot push Share and More to a third line.
+  const long = `${"zilveren-vlinder-".repeat(2)}${String(Date.now()).slice(-6)}`;
+  const renamed = await page.evaluate(
+    async ([from, to]) =>
+      (await fetch(`/api/projects/${from}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: to }) })).status,
+    [name, long],
+  );
+  expect(renamed).toBe(200);
+  await page.goto(`/e/${long}`);
+  await expect(page.locator(".status")).toHaveText("Opgeslagen");
   await page.setViewportSize({ width: 390, height: 800 });
   const bar = page.locator("header.bar");
   const box = async (locator: import("@playwright/test").Locator) => (await locator.boundingBox())!;

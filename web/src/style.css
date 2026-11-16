@@ -1671,14 +1671,19 @@ a.project-name:hover {
     height: 0;
   }
 
+  /* A wrapping bar breaks lines by each item's own width before anything shrinks, so a long
+     address would push Share and More to a third line. With a basis of 0 the address never
+     causes a break: it grows up to its text and ends in an ellipsis when that does not fit. */
   .editor .bar > .address,
   .editor .bar > .name-form {
     order: 4;
-    flex: 0 1 auto;
+    flex: 1 1 0;
     min-width: 0;
   }
 
   .editor .bar > .address {
+    max-width: max-content;
+    text-align: left;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
