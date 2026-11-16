@@ -450,7 +450,7 @@ test("on a narrow window the three areas become three tabs", async ({ page }) =>
 test("anyone can make an account; while an admin has sign-up closed, a new address reads why", async ({ page }) => {
   const admin = await setUp();
   await page.goto("/");
-  await expect(page.locator("h1")).toHaveText("Schrijf je eerste website en zie ze meteen op haar eigen adres.");
+  await expect(page.locator("h1")).toHaveText("Maak een site zonder strijd.");
   await expect(page.locator(".front-note")).toHaveCount(0);
   await page.getByRole("link", { name: "Aanmelden" }).click();
   await page.getByLabel("Email").fill(`iemand-${Date.now()}@elders.test`);

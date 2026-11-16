@@ -5,7 +5,7 @@ const nl = {
   "app.notFound": "Deze pagina bestaat niet.",
   "app.back": "Terug naar je projecten",
 
-  "front.line": "Schrijf je eerste website en zie ze meteen op haar eigen adres.",
+  "front.line": "Maak een site zonder strijd.",
   "front.signIn": "Aanmelden",
   "front.about": "Wat is maak?",
   "front.sub": "maak is een editor in je browser. Je schrijft HTML en CSS in echte bestanden, en je pagina verandert ernaast terwijl je typt.",
@@ -269,7 +269,7 @@ const en: Record<keyof typeof nl, string> = {
   "app.notFound": "This page does not exist.",
   "app.back": "Back to your projects",
 
-  "front.line": "Write your first website and see it live at its own address.",
+  "front.line": "Build a site without the fight.",
   "front.signIn": "Sign in",
   "front.about": "What is maak?",
   "front.sub": "maak is an editor in your browser. You write HTML and CSS in real files, and your page changes next to the code as you type.",
