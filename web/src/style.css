@@ -694,6 +694,17 @@ button.address:hover {
   inset: 0 -4px;
 }
 
+/* Between two code boxes the line runs across the column. */
+.divider.across {
+  flex: none;
+  height: 1px;
+  cursor: row-resize;
+}
+
+.divider.across::after {
+  inset: -4px 0;
+}
+
 .divider:hover,
 .divider:focus-visible {
   background: var(--accent);
@@ -950,9 +961,6 @@ body.menu-open .frame-shield {
   flex-direction: column;
 }
 
-.box + .box {
-  border-top: 1px solid var(--line);
-}
 
 .box.folded {
   flex: none;
@@ -1643,7 +1651,7 @@ a.project-name:hover {
     display: block;
   }
 
-  .divider,
+  .divider:not(.across),
   .pane {
     display: none;
   }

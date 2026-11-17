@@ -410,6 +410,48 @@ test("the rename field takes the place of the address without moving the bar or 
   await page.screenshot({ path: "test-results/rename-bar-phone.png", clip: { x: 0, y: 0, width: 390, height: 160 } });
 });
 
+test("every divider drags: files | code | preview, and between the code boxes", async ({ page }) => {
+  await signInPage(page, "dividers");
+  const rect = async (selector: string, n = 0) => (await page.locator(selector).nth(n).boundingBox())!;
+  // The lines between the three columns, then the lines between the code boxes.
+  const drag = async (n: number, dx: number, dy: number) => {
+    const d = await rect(n < 2 ? ".panes > .divider" : ".pane-code > .divider", n % 2);
+    const x = d.x + d.width / 2;
+    const y = d.y + d.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + dx, y + dy, { steps: 8 });
+    await page.mouse.up();
+  };
+  const files = (await rect(".pane-files")).width;
+  await drag(0, 80, 0);
+  expect((await rect(".pane-files")).width).toBeCloseTo(files + 80, -1);
+
+  const preview = (await rect(".pane-preview")).width;
+  await drag(1, -60, 0);
+  expect((await rect(".pane-preview")).width).toBeCloseTo(preview + 60, -1);
+
+  // Open the JS box, so all three boxes share the column.
+  await page.locator(".box").nth(2).locator(".fold").click();
+  await expect(page.locator(".box").nth(2)).not.toHaveClass(/folded/);
+  await expect(page.locator(".divider")).toHaveCount(4);
+
+  const [html, css, js] = [await rect(".box", 0), await rect(".box", 1), await rect(".box", 2)];
+  await drag(2, 0, 70);
+  expect((await rect(".box", 0)).height).toBeCloseTo(html.height + 70, -1);
+  expect((await rect(".box", 1)).height).toBeCloseTo(css.height - 70, -1);
+  await drag(3, 0, -50);
+  expect((await rect(".box", 1)).height).toBeCloseTo(css.height - 70 - 50, -1);
+  expect((await rect(".box", 2)).height).toBeCloseTo(js.height + 50, -1);
+
+  // With CSS folded, the divider under HTML resizes HTML against JS.
+  await page.locator(".box").nth(1).locator(".fold").click();
+  const before = [await rect(".box", 0), await rect(".box", 2)];
+  await drag(2, 0, 40);
+  expect((await rect(".box", 0)).height).toBeCloseTo(before[0].height + 40, -1);
+  expect((await rect(".box", 2)).height).toBeCloseTo(before[1].height - 40, -1);
+});
+
 test("the editor works by keyboard: new file, Cmd+S, menus", async ({ page }) => {
   await signInPage(page, "keys");
   await page.getByRole("button", { name: "Nieuw bestand" }).focus();

@@ -103,6 +103,9 @@ function Editor({ store, me }: { store: EditorStore; me: Me }) {
   const [tab, setTab] = useState<Tab>("code");
   const [history, setHistory] = useState(false);
   const [dragging, setDragging] = useState(false);
+  // The share of the code column each open box takes, set by the lines between the boxes.
+  const [grow, setGrow] = useState([1, 1, 1]);
+  const column = useRef<HTMLElement>(null);
 
   useEffect(() => {
     document.title = `${store.project.name} · maak`;
@@ -180,9 +183,20 @@ function Editor({ store, me }: { store: EditorStore; me: Me }) {
             setTreeWidth((w) => Math.min(Math.max(w + dx, 140), 480))
           }
         />
-        <section class="pane pane-code" aria-label={t("box.tab")}>
+        <section class="pane pane-code" aria-label={t("box.tab")} ref={column}>
           {[0, 1, 2].map((box) => (
-            <Box key={box} store={store} box={box} />
+            <Fragment key={box}>
+              {box > 0 && (
+                <Divider
+                  across
+                  onDrag={setDragging}
+                  onMove={(dy) =>
+                    setGrow((g) => moveBoxLine(column.current!, store.folded, g, box - 1, dy))
+                  }
+                />
+              )}
+              <Box store={store} box={box} grow={grow[box]} />
+            </Fragment>
           ))}
         </section>
         <Divider
@@ -304,36 +318,76 @@ function ResizeDialog({ store }: { store: EditorStore }) {
   );
 }
 
-/** A divider that drags with the pointer and moves with the arrow keys. */
+/**
+ * A divider that drags with the pointer and moves with the arrow keys. A divider between columns
+ * reports horizontal moves; one `across` a column, between rows, reports vertical moves.
+ */
 function Divider(props: {
-  onMove: (dx: number) => void;
+  onMove: (delta: number) => void;
   onDrag: (active: boolean) => void;
+  across?: boolean;
 }) {
   const last = useRef(0);
+  const at = (e: PointerEvent) => (props.across ? e.clientY : e.clientX);
+  const [back, forward] = props.across ? ["ArrowUp", "ArrowDown"] : ["ArrowLeft", "ArrowRight"];
   return (
     <div
-      class="divider"
+      class={`divider${props.across ? " across" : ""}`}
       role="separator"
-      aria-orientation="vertical"
+      aria-orientation={props.across ? "horizontal" : "vertical"}
       tabIndex={0}
       onPointerDown={(e) => {
-        last.current = e.clientX;
+        last.current = at(e);
         e.currentTarget.setPointerCapture(e.pointerId);
         props.onDrag(true);
       }}
       onPointerMove={(e) => {
         if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
-        props.onMove(e.clientX - last.current);
-        last.current = e.clientX;
+        props.onMove(at(e) - last.current);
+        last.current = at(e);
       }}
       onPointerUp={() => props.onDrag(false)}
       onPointerCancel={() => props.onDrag(false)}
       onKeyDown={(e) => {
-        if (e.key === "ArrowLeft") props.onMove(-24);
-        if (e.key === "ArrowRight") props.onMove(24);
+        if (e.key === back) props.onMove(-24);
+        if (e.key === forward) props.onMove(24);
       }}
     />
   );
+}
+
+/** The smallest height an open code box is dragged to: its label and a few lines. */
+const BOX_MIN = 88;
+
+/**
+ * Moves the line under box `above` by `dy` pixels. It resizes the nearest open box on each side;
+ * a folded box keeps its height. Open boxes share the column by weight (`flex-grow` with a basis
+ * of 0), so each one's height is in proportion to its weight and the new weights follow from the
+ * new heights.
+ */
+function moveBoxLine(
+  column: HTMLElement,
+  folded: boolean[],
+  grow: number[],
+  above: number,
+  dy: number,
+): number[] {
+  let a = above;
+  while (a >= 0 && folded[a]) a--;
+  let b = above + 1;
+  while (b < grow.length && folded[b]) b++;
+  if (a < 0 || b >= grow.length) return grow;
+  const boxes = column.querySelectorAll<HTMLElement>(":scope > .box");
+  const ha = boxes[a].getBoundingClientRect().height;
+  const hb = boxes[b].getBoundingClientRect().height;
+  const total = ha + hb;
+  if (total < 2 * BOX_MIN) return grow;
+  const next = Math.min(Math.max(ha + dy, BOX_MIN), total - BOX_MIN);
+  const weight = grow[a] + grow[b];
+  const result = [...grow];
+  result[a] = (weight * next) / total;
+  result[b] = weight - result[a];
+  return result;
 }
 
 function TopBar({
@@ -890,7 +944,7 @@ function imageDrops(store: EditorStore, html: string): Drops {
   };
 }
 
-function Box({ store, box }: { store: EditorStore; box: number }) {
+function Box({ store, box, grow }: { store: EditorStore; box: number; grow: number }) {
   const path = store.boxes[box];
   const doc = path ? store.docs.get(path) : undefined;
   const folded = store.folded[box];
@@ -945,7 +999,10 @@ function Box({ store, box }: { store: EditorStore; box: number }) {
   });
 
   return (
-    <div class={`box box-${KINDS[box]}${folded ? " folded" : ""}`}>
+    <div
+      class={`box box-${KINDS[box]}${folded ? " folded" : ""}`}
+      style={folded ? undefined : { flexGrow: grow }}
+    >
       <div class="box-head">
         <Kind box={box} />
         {candidates.length > 1 ? (
