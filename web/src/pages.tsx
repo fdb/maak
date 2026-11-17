@@ -197,7 +197,9 @@ export function Front(props: { me: Me; next: string } & LangProps) {
       </ul>
       <section class="free">
         <h2>{t("front.free.title")}</h2>
-        <p>{t("front.free.text")}</p>
+        <p>
+          {t("front.free.text")} <a href={SOURCE}>{t("front.free.code")}</a>
+        </p>
       </section>
     </Shell>
   );
@@ -826,6 +828,9 @@ export function Admin(props: { me: Me }) {
   );
 }
 
+/** Where the code of maak lives. */
+const SOURCE = "https://github.com/fdb/maak";
+
 // The terms and privacy texts are drafts. They state what the software does; the legal questions
 // in the spec (controller, retention, minors) are not settled here.
 const TEXTS: Record<"about" | "terms" | "privacy", Record<Lang, { title: string; draft: boolean; body: string[] }>> = {
@@ -838,6 +843,7 @@ const TEXTS: Record<"about" | "terms" | "privacy", Record<Lang, { title: string;
         "Een project is een map met echte bestanden. Elk project heeft één adres, naam.{suffix}. Zolang je niet deelt, zie alleen jij het.",
         "Er is geen knop om op te slaan. Wat je typt wordt bewaard, en Geschiedenis brengt een eerdere versie terug.",
         "De bestanden zijn van jou. Met ZIP downloaden krijg je de map zoals ze is, en ze werkt ook zonder maak.",
+        "De code van maak is open source, onder de MIT-licentie: {source}.",
         "Vragen: {contact}.",
       ],
     },
@@ -849,6 +855,7 @@ const TEXTS: Record<"about" | "terms" | "privacy", Record<Lang, { title: string;
         "A project is a folder of real files. Every project has one address, name.{suffix}. Until you share it, only you can see it.",
         "There is no save button. What you type is kept, and History brings back an earlier version.",
         "The files are yours. Download ZIP gives you the folder as it is, and it works without maak.",
+        "The code of maak is open source, under the MIT License: {source}.",
         "Questions: {contact}.",
       ],
     },
@@ -911,9 +918,18 @@ export function TextPage(props: { which: "about" | "terms" | "privacy"; me: Me }
       <article class="text">
         <h1>{text.title}</h1>
         {text.draft && <p class="error">{getLang() === "nl" ? "Ontwerp, nog niet nagelezen." : "Draft, not yet reviewed."}</p>}
-        {text.body.map((line) => (
-          <p>{fill(line)}</p>
-        ))}
+        {text.body.map((line) => {
+          const [before, after] = fill(line).split("{source}");
+          return after === undefined ? (
+            <p>{before}</p>
+          ) : (
+            <p>
+              {before}
+              <a href={SOURCE}>github.com/fdb/maak</a>
+              {after}
+            </p>
+          );
+        })}
       </article>
     </Shell>
   );

@@ -567,6 +567,13 @@ test("anyone can make an account; while an admin has sign-up closed, a new addre
   }
 });
 
+test("the front page and the about page link to the code of maak on GitHub", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator(".free a")).toHaveAttribute("href", "https://github.com/fdb/maak");
+  await page.goto("/about");
+  await expect(page.locator(".text a")).toHaveAttribute("href", "https://github.com/fdb/maak");
+});
+
 test("the editor loads nothing from another party", async ({ page }) => {
   const hosts = new Set<string>();
   page.on("request", (request) => hosts.add(new URL(request.url()).host));
